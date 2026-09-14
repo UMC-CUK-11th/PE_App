@@ -83,7 +83,15 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         // Here we take the value from the MyHomePage object that was created by
         // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: Text(
+              '영화의 순간을 기록하세요',
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+            ),),
       ),
       body: Center(
         // Center is a layout widget. It takes a single child and positions it
@@ -104,21 +112,16 @@ class _MyHomePageState extends State<MyHomePage> {
           // wireframe for each widget.
           mainAxisAlignment: .center,
           children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '영화의 순간을 기억하세요',
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-            ),),
+            const 
+            
+            Text('보고 싶은 영화부터 나만의 평점까지 한곳에서 관리해요'),
             const Icon(
                 Icons.movie_outlined,
                 size: 72,
-                color: Colors.deepPurple,
+                color: Colors.red,
+                semanticLabel: '영화 아이콘',
               ),
+
           
           ElevatedButton(
   onPressed: () {
@@ -140,4 +143,5 @@ class _MyHomePageState extends State<MyHomePage> {
     );
     
   }
+  
 }
