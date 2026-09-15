@@ -5,6 +5,7 @@ class Movie {
 
   Movie({required this.title}); //required가 붙으면 필수
 }
+
 void main() {
   
   
@@ -29,12 +30,12 @@ void main() {
   }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatelessWidget { //StatelessWidget 은 정적일때 사용
   const MyApp({super.key});
 
   // This widget is the root of your application.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) {//현재 데이터에 맞는 위젯트리를 build에서 반환 
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
@@ -102,22 +103,12 @@ class _MyHomePageState extends State<MyHomePage> {
     // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(
-              '영화의 순간을 기록하세요',
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-            ),),
-      ),
+          title: const Text('내 프로필'),
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          shadowColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          ),
       body: Center(
         // Center is a layout widget. It takes a single child and positions it
         // in the middle of the parent.
