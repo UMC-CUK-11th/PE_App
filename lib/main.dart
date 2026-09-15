@@ -1,7 +1,32 @@
 import 'package:flutter/material.dart';
+class Movie {
+  String title;
+  
 
+  Movie({required this.title}); //required가 붙으면 필수
+}
 void main() {
+  
+  
+  // 4. nullable 닉네임을 안전한 기본값으로 변환 (?? 연산자 사용)
+  String? userNickname; // 현재 null 상태라고 가정
+  String displayName = userNickname ?? '0화L0VER';
+  debugPrint('환영합니다, $displayName님!');
+
+  // 2. 영화 3개를 List<Movie>에 넣기
+  List<Movie> movieList = [
+    Movie(title: '라라랜드'),
+    Movie(title: '파이트 클럽'),
+    Movie(title: '오디세이'),
+  ];
+
+  
+  debugPrint('--- [for 문을 이용한 영화 제목 출력] ---');
+  for (var movie in movieList) {
+    debugPrint(movie.title);
+
   runApp(const MyApp());
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -131,12 +156,12 @@ class _MyHomePageState extends State<MyHomePage> {
     minimumSize: const Size(double.infinity, 48),
     padding: const EdgeInsets.symmetric(horizontal: 24),
   ),
-  child: const Text('시작하기'),
+  child: const Text('시작하기'), //버튼 안에 들어갈거
 )],
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
+        onPressed: _incrementCounter, //버튼 기능지정
         tooltip: 'Increment',
         child: const Icon(Icons.add),
       ),
