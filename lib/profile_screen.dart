@@ -25,13 +25,9 @@ class ProfileScreen extends StatelessWidget {
               const SizedBox(height: 32),
               const _ProfileStats(),
               const SizedBox(height: 32),
-              const SizedBox(
-                width: 358,
-                height: 24,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('선호하는 장르', style: AppTextStyles.titleMedium),
-                ),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('선호하는 장르', style: AppTextStyles.titleMedium),
               ),
               const SizedBox(height: 16),
               Wrap(
@@ -73,23 +69,21 @@ class _ProfileHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        const SizedBox(
-          width: 318,
-          height: 28,
-          child: Center(child: Text('무비러버', style: AppTextStyles.titleLarge)),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 318),
+          child: const Text(
+            '무비러버',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.titleLarge,
+          ),
         ),
         const SizedBox(height: 8),
         ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 448),
-          child: const SizedBox(
-            width: 318,
-            height: 48,
-            child: Text(
-              '매주 주말엔 영화관으로 출근하는 프로 관람객. 좋은 영화를 보고 기록하는 것을 좋아합니다.',
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              style: AppTextStyles.bodyMedium,
-            ),
+          constraints: const BoxConstraints(maxWidth: 318),
+          child: const Text(
+            '매주 주말엔 영화관으로 출근하는 프로 관람객. 좋은 영화를 보고 기록하는 것을 좋아합니다.',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.bodyMedium,
           ),
         ),
         const SizedBox(height: 24),
@@ -149,7 +143,7 @@ class _GenreChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 32,
+      constraints: const BoxConstraints(minHeight: 32),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: AppColors.softViolet,

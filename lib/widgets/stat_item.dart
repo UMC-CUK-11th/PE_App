@@ -11,7 +11,7 @@ class StatItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 86,
+      constraints: const BoxConstraints(minHeight: 86),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.statBackground,

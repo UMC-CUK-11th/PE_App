@@ -85,15 +85,13 @@ class _WelcomeContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const SizedBox(
-          width: 82,
-          height: 40,
-          child: Padding(
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 82),
+          child: const Padding(
             padding: EdgeInsets.only(bottom: 24),
             child: Text(
               'FLUTTER 1주차',
               textAlign: TextAlign.center,
-              maxLines: 1,
               style: TextStyle(
                 color: AppColors.onSurfaceVariant,
                 fontSize: 11,
@@ -129,7 +127,6 @@ class _WelcomeContent extends StatelessWidget {
               Text(
                 '영화의 순간을\n기록하세요',
                 textAlign: TextAlign.center,
-                maxLines: 2,
                 style: TextStyle(
                   color: Color(0xFF1B1C1A),
                   fontSize: 28,
@@ -141,7 +138,6 @@ class _WelcomeContent extends StatelessWidget {
               Text(
                 '보고 싶은 영화부터 나만의 평점까지\n한곳에서 관리해요',
                 textAlign: TextAlign.center,
-                maxLines: 2,
                 style: TextStyle(
                   color: AppColors.onSurfaceVariant,
                   fontSize: 14,
