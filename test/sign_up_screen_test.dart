@@ -8,6 +8,7 @@ void main() {
         TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;
     view.resetPhysicalSize();
     view.resetDevicePixelRatio();
+    view.resetViewInsets();
   });
 
   testWidgets('유효한 입력과 약관 동의 후 가입 버튼이 활성화된다', (tester) async {
@@ -92,7 +93,8 @@ void main() {
     final passwordField = find.byType(TextFormField).at(2);
     await tester.ensureVisible(passwordField);
     await tester.tap(passwordField);
-    await tester.pump();
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
   });

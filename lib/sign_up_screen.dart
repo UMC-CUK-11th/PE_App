@@ -77,10 +77,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     if (!isValid || !_agreedToTerms) return;
 
     FocusScope.of(context).unfocus();
-    debugPrint(
-      '회원가입 입력 완료: ${_nicknameController.text.trim()}, '
-      '${_emailController.text.trim()}',
-    );
+    debugPrint('회원가입이 완료되었습니다.');
   }
 
   void _handleBack() {
