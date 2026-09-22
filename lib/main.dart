@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_theme.dart'; // 💡 AppTheme 적용을 위해 임포트 추가
 
 void main() {
   runApp(const MyApp());
@@ -12,13 +13,8 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'MovieLog Sign Up',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6750A4),
-          primary: const Color(0xFF6750A4),
-        ),
-      ),
+      // 💡 CodeRabbit 피드백 반영: 인라인 테마 대신 AppTheme.lightTheme 적용
+      theme: AppTheme.lightTheme,
       home: const SignUpScreen(),
     );
   }
@@ -34,16 +30,20 @@ class SignUpScreen extends StatefulWidget {
 class _SignUpScreenState extends State<SignUpScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final _nicknameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  // 타이핑할 때마다 커서와 포커스가 초기화되는 것을 막기 위해 build 바깥에 선언
+  final TextEditingController _nicknameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
-  final _emailFocusNode = FocusNode();
-  final _passwordFocusNode = FocusNode();
+  final FocusNode _emailFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
 
   bool _isTermsAgreed = false;
   bool _isPasswordVisible = false;
   bool _isButtonEnabled = false;
+
+  // 💡 CodeRabbit 피드백 반영: 이메일 정규식 상수화 (TLD 길이 제한 완화로 .online 등도 허용)
+  static final RegExp _emailRegExp = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$');
 
   @override
   void initState() {
@@ -65,9 +65,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   void _checkFormValidity() {
     final isNicknameValid = _nicknameController.text.trim().length >= 2;
-    final isEmailValid = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-        .hasMatch(_emailController.text.trim());
-    final isPasswordValid = _passwordController.text.length >= 8;
+    final isEmailValid = _emailRegExp.hasMatch(_emailController.text.trim());
+    
+    // 💡 CodeRabbit 피드백 반영: 비밀번호 힌트('영문, 숫자 포함 8자 이상')와 일치하도록 검증 추가
+    final passwordText = _passwordController.text;
+    final hasLetter = passwordText.contains(RegExp(r'[A-Za-z]'));
+    final hasDigit = passwordText.contains(RegExp(r'[0-9]'));
+    final isPasswordValid = passwordText.length >= 8 && hasLetter && hasDigit;
 
     final isAllValid =
         isNicknameValid && isEmailValid && isPasswordValid && _isTermsAgreed;
@@ -90,7 +94,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFAF8F5), // 시안의 부드러운 배경색
+      backgroundColor: const Color(0xFFFAF8F5),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -158,8 +162,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       if (value == null || value.trim().isEmpty) {
                         return '이메일을 입력해주세요.';
                       }
-                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
-                          .hasMatch(value.trim())) {
+                      if (!_emailRegExp.hasMatch(value.trim())) {
                         return '올바른 이메일 형식이 아닙니다.';
                       }
                       return null;
@@ -197,6 +200,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       }
                       if (value.length < 8) {
                         return '비밀번호는 8자 이상이어야 합니다.';
+                      }
+                      if (!value.contains(RegExp(r'[A-Za-z]')) ||
+                          !value.contains(RegExp(r'[0-9]'))) {
+                        return '영문과 숫자를 모두 포함해야 합니다.';
                       }
                       return null;
                     },
@@ -247,6 +254,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               ),
             );
 
+            // 반응형 레이아웃 (태블릿 등 넓은 화면 대응)
             if (constraints.maxWidth >= 700) {
               return Center(
                 child: SingleChildScrollView(
