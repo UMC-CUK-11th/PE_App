@@ -14,9 +14,16 @@ abstract final class AppColors {
   static const profileBorder = Color(0xFFD0BCFF);
   static const statBackground = Color(0xFFF5F3F0);
   static const softViolet = Color(0xFFE9DDFF);
+  static const fieldOutline = Color(0xFFCBC4D2);
+  static const compactFieldOutline = Color(0xFFCAC4D0);
+  static const inputText = Color(0xFF211F26);
+  static const hintText = Color(0xFF7A7582);
+  static const error = Color(0xFFB3261E);
+  static const errorContainer = Color(0xFFFFDAD6);
+  static const disabledButton = Color(0xFFCCC2DC);
   static const surface = warmWhite;
   static const onSurface = black;
-  static const onSurfaceVariant = Color(0xFF494551);
+  static const onSurfaceVariant = Color(0xFF49454F);
   static const outline = gray;
   static const outlineVariant = softViolet;
 }

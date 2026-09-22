@@ -62,7 +62,7 @@ class _ProfileHeader extends StatelessWidget {
           ),
           child: ClipOval(
             child: Image.asset(
-              'assets/images/profile_photo.jpg',
+              'assets/images/profile/profile_movielog.jpg',
               fit: BoxFit.cover,
               semanticLabel: '무비러버 프로필 이미지',
             ),
