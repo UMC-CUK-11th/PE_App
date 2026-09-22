@@ -116,6 +116,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   Icons.movie_outlined,
                   size: 100,
                   color: Colors.deepPurple,
+                  semanticLabel: '영화 아이콘'
               ),
               const SizedBox(height: 32),
               const Text(
@@ -129,6 +130,8 @@ class _MyHomePageState extends State<MyHomePage> {
               const Text(
                 '보고 싶은 영화부터 나만의 평점까지\n한곳에서 관리해요',
                 textAlign: TextAlign.center, //가운데 정렬
+                maxLines: 2,               // 최대 줄 수
+                overflow: TextOverflow.ellipsis, // 넘칠 경우 생략 부호 처리
                 style: TextStyle(
                   color: Colors.black,   // 색
                   fontSize: 20,               // 크기 (논리 픽셀)
