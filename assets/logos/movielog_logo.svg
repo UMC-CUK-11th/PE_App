@@ -1,5 +1,11 @@
-<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="60" height="48" viewBox="0 0 60 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-<g id="Container">
-<path id="Icon" d="M6 0L12 12H21L15 0H21L27 12H36L30 0H36L42 12H51L45 0H54C55.65 0 57.0625 0.5875 58.2375 1.7625C59.4125 2.9375 60 4.35 60 6V42C60 43.65 59.4125 45.0625 58.2375 46.2375C57.0625 47.4125 55.65 48 54 48H6C4.35 48 2.9375 47.4125 1.7625 46.2375C0.5875 45.0625 0 43.65 0 42V6C0 4.35 0.5875 2.9375 1.7625 1.7625C2.9375 0.5875 4.35 0 6 0V0V0M6 18V42V42V42H54V42V42V18H6V18M6 18V18V42V42V42V42V42V42V18V18" fill="#6750A4"/>
-</g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- Simple Clapperboard using basic shapes -->
+  <rect x="20" y="45" width="80" height="55" rx="4" fill="#1C1B1F" />
+  <rect x="20" y="30" width="80" height="12" rx="2" fill="#1C1B1F" />
+  <!-- Stripes on the clapper top -->
+  <path d="M30 30 L40 42 M50 30 L60 42 M70 30 L80 42 M90 30 L100 42" stroke="#FDFCF8" stroke-width="4" />
+  <!-- Clapper hinge circle -->
+  <circle cx="20" cy="36" r="3" fill="#6750A4" />
+  <!-- Symbol/Play icon on the body -->
+  <path d="M55 65 L70 72.5 L55 80 Z" fill="#6750A4" />
 </svg>
