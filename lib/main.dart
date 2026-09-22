@@ -120,7 +120,7 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
               const SizedBox(height: 32),
               const Text(
-                '영화의 순간을\n기록하세요',
+                '영화의 순간을\n기록하세요', // 텍스트
                 textAlign: TextAlign.center, //가운데 정렬
                 style: TextStyle(
                   color: Colors.black,   // 색
