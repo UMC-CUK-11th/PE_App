@@ -1,29 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import 'app_colors.dart';
-
-abstract final class AppTheme {
-  static final ThemeData light = ThemeData(
-    useMaterial3: true,
-    fontFamily: 'Manrope',
-    scaffoldBackgroundColor: AppColors.warmWhite,
-    appBarTheme: const AppBarTheme(
-      backgroundColor: AppColors.warmWhite,
-      foregroundColor: AppColors.black,
-      centerTitle: true,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      shadowColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
-      systemOverlayStyle: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        statusBarBrightness: Brightness.light,
-        systemNavigationBarColor: AppColors.warmWhite,
-        systemNavigationBarIconBrightness: Brightness.dark,
-      ),
-    ),
-  );
+class AppColors {
+  static const Color primary = Color(0xFF6750A4);
+  static const Color surface = Color(0xFFF7F2FA);
+  static const Color outlineVariant = Color(0xFFCAC4D0);
 }
-```
+
+class AppTheme {
+  static ThemeData get lightTheme {
+    return ThemeData(
+      useMaterial3: true,
+      fontFamily: 'Manrope',
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: AppColors.primary,
+        primary: AppColors.primary,
+        surface: AppColors.surface,
+      ),
+      cardTheme: const CardThemeData(
+        color: AppColors.surface,
+      ),
+    );
+  }
+}

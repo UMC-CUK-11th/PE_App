@@ -1,163 +1,425 @@
 import 'package:flutter/material.dart';
-class Movie {
-  String title;
-  
-
-  Movie({required this.title}); //required가 붙으면 필수
-}
 
 void main() {
-  
-  
-  // 4. nullable 닉네임을 안전한 기본값으로 변환 (?? 연산자 사용)
-  String? userNickname; // 현재 null 상태라고 가정
-  String displayName = userNickname ?? '0화L0VER';
-  debugPrint('환영합니다, $displayName님!');
-
-  // 2. 영화 3개를 List<Movie>에 넣기
-  List<Movie> movieList = [
-    Movie(title: '라라랜드'),
-    Movie(title: '파이트 클럽'),
-    Movie(title: '오디세이'),
-  ];
-
-  
-  debugPrint('--- [for 문을 이용한 영화 제목 출력] ---');
-  for (var movie in movieList) {
-    debugPrint(movie.title);
-
   runApp(const MyApp());
-  }
 }
 
-class MyApp extends StatelessWidget { //StatelessWidget 은 정적일때 사용
+class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
-  Widget build(BuildContext context) {//현재 데이터에 맞는 위젯트리를 build에서 반환 
+  Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'MovieLog Sign Up',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6750A4),
+          primary: const Color(0xFF6750A4),
+        ),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const SignUpScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class SignUpScreen extends StatefulWidget {
+  const SignUpScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<SignUpScreen> createState() => _SignUpScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _SignUpScreenState extends State<SignUpScreen> {
+  final _formKey = GlobalKey<FormState>();
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+  final _nicknameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  final _emailFocusNode = FocusNode();
+  final _passwordFocusNode = FocusNode();
+
+  bool _isTermsAgreed = false;
+  bool _isPasswordVisible = false;
+  bool _isButtonEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nicknameController.addListener(_checkFormValidity);
+    _emailController.addListener(_checkFormValidity);
+    _passwordController.addListener(_checkFormValidity);
+  }
+
+  @override
+  void dispose() {
+    _nicknameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _checkFormValidity() {
+    final isNicknameValid = _nicknameController.text.trim().length >= 2;
+    final isEmailValid = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+        .hasMatch(_emailController.text.trim());
+    final isPasswordValid = _passwordController.text.length >= 8;
+
+    final isAllValid =
+        isNicknameValid && isEmailValid && isPasswordValid && _isTermsAgreed;
+
+    if (_isButtonEnabled != isAllValid) {
+      setState(() {
+        _isButtonEnabled = isAllValid;
+      });
+    }
+  }
+
+  void _submitForm() {
+    if (_formKey.currentState!.validate() && _isTermsAgreed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('회원가입이 완료되었습니다.')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-          title: const Text('내 프로필'),
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          shadowColor: Colors.transparent,
-          surfaceTintColor: Colors.transparent,
-          ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const 
-            
-            Text('보고 싶은 영화부터 나만의 평점까지 한곳에서 관리해요'),
-            const Icon(
-                Icons.movie_outlined,
-                size: 72,
-                color: Colors.red,
-                semanticLabel: '영화 아이콘',
-              ),
+      backgroundColor: const Color(0xFFFAF8F5), // 시안의 부드러운 배경색
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            Widget formContent = Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 상단 타이틀 영역[cite: 2]
+                  const Center(
+                    child: Column(
+                      children: [
+                        Text(
+                          '회원가입',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF4A3E73),
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'MovieLog에 오신 것을 환영합니다!',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 32),
 
-          
-          ElevatedButton(
-  onPressed: () {
-    debugPrint('시작하기 버튼을 눌렀습니다.');
-  },
-  style: ElevatedButton.styleFrom(
-    minimumSize: const Size(double.infinity, 48),
-    padding: const EdgeInsets.symmetric(horizontal: 24),
-  ),
-  child: const Text('시작하기'), //버튼 안에 들어갈거
-)],
+                  // 닉네임 입력창[cite: 2]
+                  MovieLogTextFormField(
+                    controller: _nicknameController,
+                    label: '닉네임',
+                    hint: '영화로운 닉네임을 입력하세요',
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) =>
+                        FocusScope.of(context).requestFocus(_emailFocusNode),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return '닉네임을 입력해주세요.';
+                      }
+                      if (value.trim().length < 2) {
+                        return '닉네임은 2글자 이상이어야 합니다.';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 이메일 입력창[cite: 2]
+                  MovieLogTextFormField(
+                    controller: _emailController,
+                    focusNode: _emailFocusNode,
+                    label: '이메일 주소',
+                    hint: 'example@movielog.com',
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) =>
+                        FocusScope.of(context).requestFocus(_passwordFocusNode),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return '이메일을 입력해주세요.';
+                      }
+                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                          .hasMatch(value.trim())) {
+                        return '올바른 이메일 형식이 아닙니다.';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 비밀번호 입력창[cite: 2]
+                  MovieLogTextFormField(
+                    controller: _passwordController,
+                    focusNode: _passwordFocusNode,
+                    label: '비밀번호',
+                    hint: '영문, 숫자 포함 8자 이상',
+                    obscureText: !_isPasswordVisible,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) {
+                      if (_isButtonEnabled) _submitForm();
+                    },
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _isPasswordVisible
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                        color: Colors.grey,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isPasswordVisible = !_isPasswordVisible;
+                        });
+                      },
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return '비밀번호를 입력해주세요.';
+                      }
+                      if (value.length < 8) {
+                        return '비밀번호는 8자 이상이어야 합니다.';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 필수 약관 동의 체크박스[cite: 2]
+                  TermsAgreementCheckbox(
+                    isAgreed: _isTermsAgreed,
+                    onChanged: (value) {
+                      setState(() {
+                        _isTermsAgreed = value ?? false;
+                      });
+                      _checkFormValidity();
+                    },
+                  ),
+                  const SizedBox(height: 24),
+
+                  // 가입하기 버튼[cite: 2]
+                  SignUpSubmitButton(
+                    isEnabled: _isButtonEnabled,
+                    onPressed: _submitForm,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 하단 로그인 링크[cite: 2]
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        '이미 계정이 있나요? ',
+                        style: TextStyle(color: Colors.black54, fontSize: 13),
+                      ),
+                      GestureDetector(
+                        onTap: () {},
+                        child: const Text(
+                          '로그인',
+                          style: TextStyle(
+                            color: Color(0xFF6750A4),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+
+            if (constraints.maxWidth >= 700) {
+              return Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(vertical: 32.0),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 500),
+                    child: formContent,
+                  ),
+                ),
+              );
+            }
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: formContent,
+            );
+          },
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter, //버튼 기능지정
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+    );
+  }
+}
+
+// ----------------- 공통 위젯 분리 -----------------
+
+class MovieLogTextFormField extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final String label;
+  final String hint;
+  final bool obscureText;
+  final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
+  final Widget? suffixIcon;
+  final String? Function(String?)? validator;
+  final void Function(String)? onFieldSubmitted;
+
+  const MovieLogTextFormField({
+    super.key,
+    required this.controller,
+    this.focusNode,
+    required this.label,
+    required this.hint,
+    this.obscureText = false,
+    this.keyboardType,
+    this.textInputAction,
+    this.suffixIcon,
+    this.validator,
+    this.onFieldSubmitted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+            color: Color(0xFF333333),
+          ),
+        ),
+        const SizedBox(height: 6),
+        TextFormField(
+          controller: controller,
+          focusNode: focusNode,
+          obscureText: obscureText,
+          keyboardType: keyboardType,
+          textInputAction: textInputAction,
+          onFieldSubmitted: onFieldSubmitted,
+          validator: validator,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(color: Colors.black38, fontSize: 14),
+            suffixIcon: suffixIcon,
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFF6750A4), width: 1.5),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class TermsAgreementCheckbox extends StatelessWidget {
+  final bool isAgreed;
+  final ValueChanged<bool?> onChanged;
+
+  const TermsAgreementCheckbox({
+    super.key,
+    required this.isAgreed,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onChanged(!isAgreed),
+      borderRadius: BorderRadius.circular(8),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: Checkbox(
+              value: isAgreed,
+              onChanged: onChanged,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Text(
+            '필수 약관에 동의합니다',
+            style: TextStyle(fontSize: 13, color: Colors.black87),
+          ),
+        ],
       ),
     );
-    
   }
-  
+}
+
+class SignUpSubmitButton extends StatelessWidget {
+  final bool isEnabled;
+  final VoidCallback onPressed;
+
+  const SignUpSubmitButton({
+    super.key,
+    required this.isEnabled,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      child: ElevatedButton(
+        onPressed: isEnabled ? onPressed : null,
+        style: ElevatedButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          backgroundColor: const Color(0xFF6750A4),
+          disabledBackgroundColor: Colors.grey.shade300,
+          foregroundColor: Colors.white,
+          disabledForegroundColor: Colors.grey.shade500,
+          elevation: 0,
+        ),
+        child: const Text(
+          '가입하기',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
 }
