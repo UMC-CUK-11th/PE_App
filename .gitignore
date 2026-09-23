@@ -47,8 +47,8 @@ secrets/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
-/coverage/
+**/build/
+**/coverage/
 
 # Symbolication related
 app.*.symbols
@@ -57,9 +57,13 @@ app.*.symbols
 app.*.map.json
 
 # Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+FE/android/app/debug
+FE/android/app/profile
+FE/android/app/release
+
+# Gradle/Backend related
+.gradle/
+out/
 
 # Widget Preview related
 .widget_preview/
