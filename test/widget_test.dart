@@ -17,11 +17,12 @@ void main() {
     expect(find.text('회원가입'), findsOneWidget); // 또는 '가입하기' 등 버튼 텍스트에 맞게 수정
 
     // 4. 입력값 없이 제출 버튼을 눌렀을 때 Validation 오류 메시지가 노출되는지 검증
-    await tester.tap(find.text('회원가입'));
+    await tester.tap(find.byType(TermsAgreementCheckbox));
     await tester.pump();
 
-    // 빈 값 검증 시 나타나는 에러 텍스트나 유효성 검사 실패 상태 확인
-    // (예: 필수 입력 에러 메시지가 화면에 나타나는지 확인)
-    expect(find.textContaining('필수'), findsWidgets); // 예시 에러 메시지 검증
+    final formState = tester.state<FormState>(find.byType(Form));
+    expect(formState.validate(), isFalse);
+    await tester.pump();
+    expect(find.text('닉네임을 입력해주세요.'), findsOneWidget);
   });
 }
