@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'app_theme.dart'; // AppTheme 임포트 확인
+import 'app_theme.dart'; // 💡 AppTheme 적용을 위해 임포트 추가
 
 void main() {
   runApp(const MyApp());
@@ -13,7 +13,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'MovieLog Sign Up',
       debugShowCheckedModeBanner: false,
-      // CodeRabbit 리뷰 반영: 인라인 테마 대신 AppTheme.lightTheme 적용
+      // 💡 CodeRabbit 피드백 반영: 인라인 테마 대신 AppTheme.lightTheme 적용
       theme: AppTheme.lightTheme,
       home: const SignUpScreen(),
     );
@@ -30,7 +30,7 @@ class SignUpScreen extends StatefulWidget {
 class _SignUpScreenState extends State<SignUpScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  // Controller와 FocusNode는 build 바깥에서 생성하여 커서/포커스 초기화 방지
+  // 타이핑할 때마다 커서와 포커스가 초기화되는 것을 막기 위해 build 바깥에 선언
   final TextEditingController _nicknameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -42,7 +42,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _isPasswordVisible = false;
   bool _isButtonEnabled = false;
 
-  // CodeRabbit 리뷰 반영: 이메일 정규식 상수화 및 TLD 길이 제한 완화
+  // 💡 CodeRabbit 피드백 반영: 이메일 정규식 상수화 (TLD 길이 제한 완화로 .online 등도 허용)
   static final RegExp _emailRegExp = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$');
 
   @override
@@ -67,7 +67,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final isNicknameValid = _nicknameController.text.trim().length >= 2;
     final isEmailValid = _emailRegExp.hasMatch(_emailController.text.trim());
     
-    // CodeRabbit 리뷰 반영: 비밀번호 검증 조건에 영문, 숫자 포함 여부 추가
+    // 💡 CodeRabbit 피드백 반영: 비밀번호 힌트('영문, 숫자 포함 8자 이상')와 일치하도록 검증 추가
     final passwordText = _passwordController.text;
     final hasLetter = passwordText.contains(RegExp(r'[A-Za-z]'));
     final hasDigit = passwordText.contains(RegExp(r'[0-9]'));
@@ -103,6 +103,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // 상단 타이틀 영역[cite: 2]
                   const Center(
                     child: Column(
                       children: [
@@ -127,7 +128,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                   const SizedBox(height: 32),
 
-                  // 닉네임 입력창
+                  // 닉네임 입력창[cite: 2]
                   MovieLogTextFormField(
                     controller: _nicknameController,
                     label: '닉네임',
@@ -147,7 +148,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // 이메일 입력창
+                  // 이메일 입력창[cite: 2]
                   MovieLogTextFormField(
                     controller: _emailController,
                     focusNode: _emailFocusNode,
@@ -169,7 +170,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // 비밀번호 입력창
+                  // 비밀번호 입력창[cite: 2]
                   MovieLogTextFormField(
                     controller: _passwordController,
                     focusNode: _passwordFocusNode,
@@ -209,7 +210,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // 필수 약관 동의 체크박스
+                  // 필수 약관 동의 체크박스[cite: 2]
                   TermsAgreementCheckbox(
                     isAgreed: _isTermsAgreed,
                     onChanged: (value) {
@@ -221,13 +222,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // 가입하기 버튼
+                  // 가입하기 버튼[cite: 2]
                   SignUpSubmitButton(
                     isEnabled: _isButtonEnabled,
                     onPressed: _submitForm,
                   ),
                   const SizedBox(height: 20),
 
+                  // 하단 로그인 링크[cite: 2]
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -252,6 +254,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               ),
             );
 
+            // 반응형 레이아웃 (태블릿 등 넓은 화면 대응)
             if (constraints.maxWidth >= 700) {
               return Center(
                 child: SingleChildScrollView(
