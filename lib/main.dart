@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:movielog/screens/profile_screen.dart';
+import 'screens/profile_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -30,7 +33,8 @@ class MyApp extends StatelessWidget {
         // tested with just a hot reload.
         colorScheme: .fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const MyHomePage(title: '영화의 순간을 기록하세요'),
+      //home: const MyHomePage(title: '영화의 순간을 기록하세요'),
+      home: const ProfileScreen()
     );
   }
 }
@@ -112,6 +116,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
               ),
               const SizedBox(height: 32),
+
               const Icon(
                   Icons.movie_outlined,
                   size: 100,
