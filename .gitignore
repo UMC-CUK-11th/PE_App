@@ -1,3 +1,4 @@
+echo FE/build/ > .gitignore
 # Miscellaneous
 *.class
 *.log
