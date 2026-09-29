@@ -49,6 +49,25 @@ abstract final class AppTheme {
           systemNavigationBarIconBrightness: Brightness.dark,
         ),
       ),
+      navigationBarTheme: NavigationBarThemeData(
+        height: 80,
+        elevation: 0,
+        backgroundColor: AppColors.warmWhite,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: AppColors.softViolet,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          return TextStyle(
+            color: states.contains(WidgetState.selected)
+                ? AppColors.onPrimaryContainer
+                : AppColors.onSurfaceVariant,
+            fontSize: 12,
+            height: 16 / 12,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w700
+                : FontWeight.w500,
+          );
+        }),
+      ),
     );
   }
 }

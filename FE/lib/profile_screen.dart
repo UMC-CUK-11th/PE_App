@@ -13,7 +13,10 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CommonAppBar(title: '내 프로필'),
+      appBar: const CommonAppBar(
+        title: '내 프로필',
+        titleStyle: AppTextStyles.signUpAppBarTitle,
+      ),
       body: SafeArea(
         top: false,
         child: SingleChildScrollView(
@@ -53,8 +56,8 @@ class _ProfileHeader extends StatelessWidget {
     return Column(
       children: [
         Container(
-          width: 128,
-          height: 128,
+          width: 96,
+          height: 96,
           padding: const EdgeInsets.all(2),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
@@ -83,7 +86,12 @@ class _ProfileHeader extends StatelessWidget {
           child: const Text(
             '매주 주말엔 영화관으로 출근하는 프로 관람객. 좋은 영화를 보고 기록하는 것을 좋아합니다.',
             textAlign: TextAlign.center,
-            style: AppTextStyles.bodyMedium,
+            style: TextStyle(
+              color: AppColors.onSurfaceVariant,
+              fontSize: 14,
+              height: 20 / 14,
+              fontWeight: FontWeight.w400,
+            ),
           ),
         ),
         const SizedBox(height: 24),
