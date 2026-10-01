@@ -1,16 +1,16 @@
-# movielog
+# PE_App
+UMC CUK 11th PE_App
 
-A new Flutter project.
+## MovieLog
+UMC 11기 PE(Mobile) 파트 Flutter 워크북 미션 앱입니다.
 
-## Getting Started
+| 주차 | 브랜치 | 내용 |
+|---|---|---|
+| 0주차 | `feature/week-0` | 초기 세팅 및 영화 기록 시작 화면 |
+| 1주차 | `feature/week-1` | UI 기초와 Material 3 · 내 프로필 화면 |
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 실행
+```bash
+flutter pub get
+flutter run
+```
