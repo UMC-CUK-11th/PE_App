@@ -2,7 +2,6 @@ package com.umc11th.exception;
 
 import com.umc11th.dto.res.ErrorResponseDTO;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -24,15 +23,12 @@ public class GlobalExceptionHandler {
     }
 
     // [04_선택 미션 3] 중복 제목은 409 Conflict로 응답
-    @ExceptionHandler({DuplicateBookTitleException.class, DataIntegrityViolationException.class})
+    @ExceptionHandler(DuplicateBookTitleException.class)
     public ResponseEntity<ErrorResponseDTO> handleDuplicateBook(
-            RuntimeException exception,
+            DuplicateBookTitleException exception,
             HttpServletRequest request
     ) {
-        String message = exception instanceof DuplicateBookTitleException
-                ? exception.getMessage()
-                : "이미 등록된 도서 제목입니다.";
-        return error(HttpStatus.CONFLICT, message, request);
+        return error(HttpStatus.CONFLICT, exception.getMessage(), request);
     }
 
     // [04_필수 미션 1] DTO 검증 실패는 검증 메시지와 함께 400 Bad Request로 응답

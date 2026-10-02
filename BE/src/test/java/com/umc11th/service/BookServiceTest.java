@@ -10,6 +10,7 @@ import com.umc11th.repository.BookRepository;
 import com.umc11th.repository.CategoryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.List;
 import java.util.Optional;
@@ -63,7 +64,8 @@ class BookServiceTest {
         when(category.getName()).thenReturn("개발");
         when(categoryRepository.findById(1L)).thenReturn(Optional.of(category));
         when(bookRepository.existsByTitleIgnoreCase("클린 코드")).thenReturn(false);
-        when(bookRepository.save(any(Book.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(bookRepository.saveAndFlush(any(Book.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         BookResponseDTO response = bookService.createBook(
                 new CreateBookRequestDTO(1L, "  클린 코드  ", "애자일 소프트웨어 장인 정신")
@@ -87,6 +89,18 @@ class BookServiceTest {
     void 중복_제목은_예외를_발생시킨다() {
         when(categoryRepository.findById(1L)).thenReturn(Optional.of(mock(Category.class)));
         when(bookRepository.existsByTitleIgnoreCase("클린 코드")).thenReturn(true);
+
+        assertThatThrownBy(() -> bookService.createBook(
+                new CreateBookRequestDTO(1L, "클린 코드", null)
+        )).isInstanceOf(DuplicateBookTitleException.class);
+    }
+
+    @Test
+    void 저장_시점의_중복_제약조건_위반도_중복_제목_예외로_변환한다() {
+        when(categoryRepository.findById(1L)).thenReturn(Optional.of(mock(Category.class)));
+        when(bookRepository.existsByTitleIgnoreCase("클린 코드")).thenReturn(false);
+        when(bookRepository.saveAndFlush(any(Book.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate title"));
 
         assertThatThrownBy(() -> bookService.createBook(
                 new CreateBookRequestDTO(1L, "클린 코드", null)

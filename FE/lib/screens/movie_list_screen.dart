@@ -219,7 +219,8 @@ class _MovieListScreenState extends State<MovieListScreen> {
     required AsyncSnapshot<_MovieListInitialData> snapshot,
     required Set<String> selectedGenres,
   }) {
-    if (snapshot.connectionState == ConnectionState.waiting) {
+    if (snapshot.connectionState == ConnectionState.waiting &&
+        !snapshot.hasData) {
       return const MovieListLoading();
     }
     if (snapshot.hasError) {

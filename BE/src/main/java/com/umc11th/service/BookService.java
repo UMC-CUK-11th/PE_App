@@ -9,6 +9,7 @@ import com.umc11th.exception.DuplicateBookTitleException;
 import com.umc11th.repository.BookRepository;
 import com.umc11th.repository.CategoryRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -54,9 +55,13 @@ public class BookService {
             throw new DuplicateBookTitleException(title);
         }
 
-        Book savedBook = bookRepository.save(
-                new Book(category, title, request.description())
-        );
-        return BookResponseDTO.from(savedBook);
+        try {
+            Book savedBook = bookRepository.saveAndFlush(
+                    new Book(category, title, request.description())
+            );
+            return BookResponseDTO.from(savedBook);
+        } catch (DataIntegrityViolationException exception) {
+            throw new DuplicateBookTitleException(title);
+        }
     }
 }
