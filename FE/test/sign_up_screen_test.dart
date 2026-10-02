@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/movie_log_app.dart';
+import 'package:movielog/router/app_router.dart';
 
 void main() {
+  Future<void> pumpSignUpScreen(WidgetTester tester) async {
+    final router = AppRouter.createRouter(initialLocation: '/register');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(MovieLogApp(router: router));
+  }
+
   tearDown(() {
     final view =
         TestWidgetsFlutterBinding.instance.platformDispatcher.views.first;
@@ -12,7 +19,7 @@ void main() {
   });
 
   testWidgets('유효한 입력과 약관 동의 후 가입 버튼이 활성화된다', (tester) async {
-    await tester.pumpWidget(const MovieLogApp());
+    await pumpSignUpScreen(tester);
 
     final fields = find.byType(TextFormField);
     expect(fields, findsNWidgets(3));
@@ -61,11 +68,11 @@ void main() {
     await tester.tap(find.text('가입하기'));
     await tester.pumpAndSettle();
 
-    expect(find.text('회원가입'), findsOneWidget);
+    expect(find.text('오늘은 어떤\n영화를 볼까요?'), findsOneWidget);
   });
 
   testWidgets('입력값이 잘못되면 한국어 오류 메시지를 표시한다', (tester) async {
-    await tester.pumpWidget(const MovieLogApp());
+    await pumpSignUpScreen(tester);
 
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), '노');
@@ -76,19 +83,26 @@ void main() {
     expect(find.text('닉네임은 2자 이상이어야 합니다.'), findsOneWidget);
     expect(find.text('올바른 이메일 형식이 아닙니다.'), findsOneWidget);
     expect(find.text('비밀번호는 8자 이상이어야 합니다.'), findsOneWidget);
+
+    await tester.enterText(fields.at(2), 'abcdefgh');
+    await tester.pump();
+    expect(find.text('비밀번호는 영문과 숫자를 포함해야 합니다.'), findsOneWidget);
+
+    await tester.enterText(fields.at(2), '12345678');
+    await tester.pump();
+    expect(find.text('비밀번호는 영문과 숫자를 포함해야 합니다.'), findsOneWidget);
   });
 
   testWidgets('낮은 모바일 화면에서 입력창을 선택해도 overflow가 없다', (tester) async {
     tester.view.physicalSize = const Size(390, 500);
     tester.view.devicePixelRatio = 1;
 
-    await tester.pumpWidget(const MovieLogApp());
+    await pumpSignUpScreen(tester);
 
-    final backIconCenter = tester.getCenter(
+    expect(
       find.byKey(const ValueKey('common-app-bar-back-icon')),
+      findsNothing,
     );
-    final appBarTitleCenter = tester.getCenter(find.text('회원가입'));
-    expect(backIconCenter.dy, closeTo(appBarTitleCenter.dy - 2, 0.01));
 
     final passwordField = find.byType(TextFormField).at(2);
     await tester.ensureVisible(passwordField);
@@ -103,7 +117,7 @@ void main() {
     tester.view.physicalSize = const Size(900, 1200);
     tester.view.devicePixelRatio = 1;
 
-    await tester.pumpWidget(const MovieLogApp());
+    await pumpSignUpScreen(tester);
 
     expect(find.text('MovieLog에 오신 것을 환영합니다!'), findsOneWidget);
     expect(find.text('영화로운 닉네임을 입력하세요'), findsOneWidget);

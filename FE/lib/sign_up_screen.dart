@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import 'theme/app_colors.dart';
 import 'theme/app_text_styles.dart';
@@ -60,6 +61,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final password = value ?? '';
     if (password.isEmpty) return '비밀번호를 입력해주세요.';
     if (password.length < 8) return '비밀번호는 8자 이상이어야 합니다.';
+    final hasEnglishLetter = RegExp(r'[A-Za-z]').hasMatch(password);
+    final hasNumber = RegExp(r'[0-9]').hasMatch(password);
+    if (!hasEnglishLetter || !hasNumber) {
+      return '비밀번호는 영문과 숫자를 포함해야 합니다.';
+    }
     return null;
   }
 
@@ -78,11 +84,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     FocusScope.of(context).unfocus();
     debugPrint('회원가입이 완료되었습니다.');
-  }
-
-  void _handleBack() {
-    FocusScope.of(context).unfocus();
-    Navigator.of(context).maybePop();
+    context.go('/home');
   }
 
   void _handleAgreementChanged(bool? value) {
@@ -107,7 +109,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       appBar: CommonAppBar(
         title: '회원가입',
         centerTitle: true,
-        onBack: _handleBack,
         titleStyle: AppTextStyles.signUpAppBarTitle,
       ),
       body: SafeArea(
