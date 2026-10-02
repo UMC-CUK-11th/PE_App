@@ -3,12 +3,18 @@ import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/movie_log_app.dart';
 import 'package:movielog/router/app_router.dart';
+import 'package:movielog/services/fake_movie_service.dart';
+import 'package:movielog/services/movie_list_preferences.dart';
 
 void main() {
   Future<dynamic> pumpRoute(WidgetTester tester, String initialLocation) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
-    final router = AppRouter.createRouter(initialLocation: initialLocation);
+    final router = AppRouter.createRouter(
+      initialLocation: initialLocation,
+      movieService: const FakeMovieService(delay: Duration.zero),
+      movieListPreferences: const _MemoryMovieListPreferences(),
+    );
     addTearDown(router.dispose);
     await tester.pumpWidget(MovieLogApp(router: router));
     await tester.pumpAndSettle();
@@ -49,12 +55,21 @@ void main() {
     expect(find.text('무비러버'), findsOneWidget);
   });
 
-  testWidgets('장르 Chip 선택은 Query Parameter와 목록에 반영된다', (tester) async {
+  testWidgets('장르 BottomSheet에서 선택한 값은 확인 후 목록에 반영된다', (tester) async {
     final router = await pumpRoute(tester, '/movies');
 
     expect(find.byKey(const ValueKey('genre-filter-bar')), findsOneWidget);
-    expect(find.byKey(const ValueKey('genre-chip-로맨스')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('genre-chip-SF')));
+    await tester.tap(find.byKey(const ValueKey('genre-filter-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('장르 필터'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('genre-checkbox-SF')));
+    await tester.pump();
+
+    // BottomSheet에서 고르는 동안에는 기존 목록에 바로 반영하지 않는다.
+    expect(find.text('별빛 아래 우리'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('apply-genre-filter')));
     await tester.pumpAndSettle();
 
     expect(
@@ -64,12 +79,46 @@ void main() {
     expect(find.text('우주의 끝에서'), findsOneWidget);
     expect(find.text('별빛 아래 우리'), findsNothing);
 
-    await tester.drag(
+    final filterBarRect = tester.getRect(
       find.byKey(const ValueKey('genre-filter-bar')),
-      const Offset(-300, 0),
     );
+    final badgeLabelRect = tester.getRect(
+      find.descendant(of: find.byType(Badge), matching: find.text('1')),
+    );
+    expect(filterBarRect.contains(badgeLabelRect.topLeft), isTrue);
+    expect(filterBarRect.contains(badgeLabelRect.bottomRight), isTrue);
+  });
+
+  testWidgets('장르 BottomSheet 상단을 위로 드래그하면 시트가 확장된다', (tester) async {
+    await pumpRoute(tester, '/movies');
+
+    await tester.tap(find.byKey(const ValueKey('genre-filter-button')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('genre-chip-다큐멘터리')), findsOneWidget);
+
+    final dragArea = find.byKey(const ValueKey('genre-filter-drag-area'));
+    final topBeforeDrag = tester.getTopLeft(dragArea).dy;
+    await tester.drag(dragArea, const Offset(0, -180));
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(dragArea).dy, lessThan(topBeforeDrag));
+  });
+
+  testWidgets('장르 BottomSheet에서 여러 장르를 함께 선택할 수 있다', (tester) async {
+    final router = await pumpRoute(tester, '/movies');
+
+    await tester.tap(find.byKey(const ValueKey('genre-filter-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('genre-checkbox-SF')));
+    await tester.tap(find.byKey(const ValueKey('genre-checkbox-로맨스')));
+    await tester.tap(find.byKey(const ValueKey('apply-genre-filter')));
+    await tester.pumpAndSettle();
+
+    expect(
+      router.routeInformationProvider.value.uri.queryParametersAll['genre'],
+      containsAll(<String>['SF', '로맨스']),
+    );
+    expect(find.text('우주의 끝에서'), findsOneWidget);
+    expect(find.text('별빛 아래 우리'), findsOneWidget);
   });
 
   testWidgets('영화 카드는 상세 화면으로 이동하고 뒤로 돌아온다', (tester) async {
@@ -118,4 +167,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<ElevatedButton>(confirmButton).onPressed, isNull);
   });
+}
+
+class _MemoryMovieListPreferences implements MovieListPreferences {
+  const _MemoryMovieListPreferences();
+
+  @override
+  Future<MovieListPreferencesData> read() async {
+    return const MovieListPreferencesData(
+      genres: {},
+      sortOption: MovieSortOption.latest,
+    );
+  }
+
+  @override
+  Future<void> saveGenres(Set<String> genres) async {}
+
+  @override
+  Future<void> saveSortOption(MovieSortOption sortOption) async {}
 }

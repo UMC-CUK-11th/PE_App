@@ -1,37 +1,154 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/mock_movies.dart';
 import '../models/movie.dart';
+import '../services/fake_movie_service.dart';
+import '../services/movie_list_preferences.dart';
 import '../theme/app_colors.dart';
-import '../widgets/movie_card.dart';
+import '../widgets/movie_grid.dart';
+import '../widgets/movie_list_states.dart';
 
-class MovieListScreen extends StatelessWidget {
-  const MovieListScreen({required this.selectedGenres, super.key});
+class MovieListScreen extends StatefulWidget {
+  const MovieListScreen({
+    required this.selectedGenres,
+    this.movieService = const FakeMovieService(),
+    this.preferences = const SharedPreferencesMovieListPreferences(),
+    this.timeout = const Duration(seconds: 3),
+    super.key,
+  });
 
   final Set<String> selectedGenres;
+  final MovieService movieService;
+  final MovieListPreferences preferences;
+  final Duration timeout;
 
-  static const _filterGenres = ['전체', ...movieGenres];
+  @override
+  State<MovieListScreen> createState() => _MovieListScreenState();
+}
 
-  List<Movie> get _filteredMovies {
-    if (selectedGenres.isEmpty) return mockMovies;
-    return mockMovies
-        .where((movie) => movie.genres.any(selectedGenres.contains))
-        .toList();
+class _MovieListScreenState extends State<MovieListScreen> {
+  late Future<_MovieListInitialData> _initialDataFuture;
+  Set<String>? _selectedGenresOverride;
+  MovieSortOption? _sortOptionOverride;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialDataFuture = _loadInitialData();
   }
 
-  void _selectGenre(BuildContext context, String genre) {
+  @override
+  void didUpdateWidget(covariant MovieListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!setEquals(oldWidget.selectedGenres, widget.selectedGenres)) {
+      _selectedGenresOverride = widget.selectedGenres;
+    }
+  }
+
+  Future<_MovieListInitialData> _loadInitialData() async {
+    try {
+      final results = await Future.wait<Object>([
+        widget.movieService.fetchMovies().timeout(widget.timeout),
+        widget.preferences.read(),
+      ]);
+      final preferences = results[1] as MovieListPreferencesData;
+      return _MovieListInitialData(
+        movies: results[0] as List<Movie>,
+        selectedGenres: widget.selectedGenres.isEmpty
+            ? preferences.genres
+            : widget.selectedGenres,
+        sortOption: preferences.sortOption,
+      );
+    } on TimeoutException {
+      throw const MovieLoadException('영화 요청 시간이 초과되었습니다.');
+    }
+  }
+
+  void _retry() {
+    setState(() {
+      _initialDataFuture = _loadInitialData();
+    });
+  }
+
+  Future<void> _refresh() async {
+    final nextFuture = _loadInitialData();
+    setState(() {
+      _initialDataFuture = nextFuture;
+    });
+    try {
+      await nextFuture;
+    } on Object {
+      // FutureBuilder가 사용자용 오류 화면으로 전환합니다.
+    }
+  }
+
+  Future<void> _applyGenres(Set<String> genres) async {
+    setState(() {
+      _selectedGenresOverride = genres;
+    });
+
     final uri = Uri(
       path: '/movies',
-      queryParameters: genre == '전체' ? null : {'genre': genre},
+      queryParameters: genres.isEmpty ? null : {'genre': genres.toList()},
     );
     context.go(uri.toString());
+    await widget.preferences.saveGenres(genres);
+  }
+
+  Future<void> _openGenreFilter(Set<String> selectedGenres) async {
+    final result = await showModalBottomSheet<Set<String>>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _GenreFilterSheet(
+        genres: movieGenres,
+        selectedGenres: selectedGenres,
+      ),
+    );
+    if (result == null || !mounted) return;
+    await _applyGenres(result);
+  }
+
+  Future<void> _selectSortOption(MovieSortOption sortOption) async {
+    setState(() {
+      _sortOptionOverride = sortOption;
+    });
+    await widget.preferences.saveSortOption(sortOption);
+  }
+
+  List<Movie> _visibleMovies({
+    required List<Movie> movies,
+    required Set<String> selectedGenres,
+    required MovieSortOption sortOption,
+  }) {
+    final filteredMovies = selectedGenres.isEmpty
+        ? List<Movie>.of(movies)
+        : movies
+              .where((movie) => movie.genres.any(selectedGenres.contains))
+              .toList();
+
+    switch (sortOption) {
+      case MovieSortOption.latest:
+        filteredMovies.sort((a, b) {
+          final yearComparison = b.year.compareTo(a.year);
+          return yearComparison != 0 ? yearComparison : a.id.compareTo(b.id);
+        });
+      case MovieSortOption.rating:
+        filteredMovies.sort((a, b) => b.rating.compareTo(a.rating));
+      case MovieSortOption.title:
+        filteredMovies.sort((a, b) => a.title.compareTo(b.title));
+    }
+    return filteredMovies;
   }
 
   @override
   Widget build(BuildContext context) {
-    final movies = _filteredMovies;
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 64,
@@ -48,113 +165,302 @@ class MovieListScreen extends StatelessWidget {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: SizedBox.square(
-              dimension: 34,
-              child: IconButton(
-                tooltip: '영화 검색',
-                onPressed: () {},
-                padding: const EdgeInsets.all(7),
-                icon: SvgPicture.asset(
-                  'assets/icons/search.svg',
-                  width: 20,
-                  height: 20,
-                  colorFilter: const ColorFilter.mode(
-                    AppColors.onSurfaceVariant,
-                    BlendMode.srcIn,
-                  ),
+            child: IconButton(
+              tooltip: '영화 검색',
+              onPressed: () {},
+              padding: const EdgeInsets.all(14),
+              icon: SvgPicture.asset(
+                'assets/icons/search.svg',
+                width: 20,
+                height: 20,
+                colorFilter: const ColorFilter.mode(
+                  AppColors.onSurfaceVariant,
+                  BlendMode.srcIn,
                 ),
               ),
             ),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          SizedBox(
-            height: 48,
-            child: ListView.separated(
-              key: const ValueKey('genre-filter-bar'),
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: _filterGenres.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final genre = _filterGenres[index];
-                final selected = genre == '전체'
-                    ? selectedGenres.isEmpty
-                    : selectedGenres.contains(genre);
-                return _GenreFilterChip(
-                  label: genre,
-                  selected: selected,
-                  onTap: () => _selectGenre(context, genre),
-                );
-              },
-            ),
+      body: FutureBuilder<_MovieListInitialData>(
+        future: _initialDataFuture,
+        builder: (context, snapshot) {
+          final selectedGenres =
+              _selectedGenresOverride ??
+              snapshot.data?.selectedGenres ??
+              widget.selectedGenres;
+          final sortOption =
+              _sortOptionOverride ??
+              snapshot.data?.sortOption ??
+              MovieSortOption.latest;
+
+          return Column(
+            children: [
+              _MovieListToolbar(
+                selectedCount: selectedGenres.length,
+                sortOption: sortOption,
+                onSortSelected: _selectSortOption,
+                onFilterPressed: () => _openGenreFilter(selectedGenres),
+              ),
+              Expanded(
+                child: _buildMovieContent(
+                  snapshot: snapshot,
+                  selectedGenres: selectedGenres,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMovieContent({
+    required AsyncSnapshot<_MovieListInitialData> snapshot,
+    required Set<String> selectedGenres,
+  }) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const MovieListLoading();
+    }
+    if (snapshot.hasError) {
+      return MovieListError(onRetry: _retry);
+    }
+
+    final data = snapshot.data!;
+    final sortOption = _sortOptionOverride ?? data.sortOption;
+    final movies = _visibleMovies(
+      movies: data.movies,
+      selectedGenres: selectedGenres,
+      sortOption: sortOption,
+    );
+
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: movies.isEmpty
+          ? const MovieListEmpty()
+          : MovieGrid(movies: movies),
+    );
+  }
+}
+
+class _MovieListInitialData {
+  const _MovieListInitialData({
+    required this.movies,
+    required this.selectedGenres,
+    required this.sortOption,
+  });
+
+  final List<Movie> movies;
+  final Set<String> selectedGenres;
+  final MovieSortOption sortOption;
+}
+
+class _MovieListToolbar extends StatelessWidget {
+  const _MovieListToolbar({
+    required this.selectedCount,
+    required this.sortOption,
+    required this.onSortSelected,
+    required this.onFilterPressed,
+  });
+
+  final int selectedCount;
+  final MovieSortOption sortOption;
+  final ValueChanged<MovieSortOption> onSortSelected;
+  final VoidCallback onFilterPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      key: const ValueKey('genre-filter-bar'),
+      height: 48,
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PopupMenuButton<MovieSortOption>(
+                key: const ValueKey('movie-sort-button'),
+                tooltip: '영화 정렬',
+                initialValue: sortOption,
+                icon: const Icon(Icons.sort, size: 22),
+                onSelected: onSortSelected,
+                itemBuilder: (context) => MovieSortOption.values
+                    .map(
+                      (option) => PopupMenuItem(
+                        value: option,
+                        child: Text(option.label),
+                      ),
+                    )
+                    .toList(),
+              ),
+              Badge(
+                isLabelVisible: selectedCount > 0,
+                label: Text('$selectedCount'),
+                alignment: Alignment.topRight,
+                offset: const Offset(-3, 4),
+                child: IconButton(
+                  key: const ValueKey('genre-filter-button'),
+                  tooltip: '장르 필터',
+                  onPressed: onFilterPressed,
+                  icon: const Icon(Icons.filter_alt_outlined, size: 22),
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: movies.isEmpty
-                ? const Center(child: Text('선택한 장르의 영화가 없습니다.'))
-                : GridView.builder(
-                    key: const PageStorageKey('movie-grid'),
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    itemCount: movies.length,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 16,
-                          childAspectRatio: 0.54,
-                        ),
-                    itemBuilder: (context, index) {
-                      final movie = movies[index];
-                      return MovieCard(
-                        movie: movie,
-                        onTap: () => context.push('/movies/${movie.id}'),
-                      );
-                    },
-                  ),
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _GenreFilterChip extends StatelessWidget {
-  const _GenreFilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
+class _GenreFilterSheet extends StatefulWidget {
+  const _GenreFilterSheet({required this.genres, required this.selectedGenres});
 
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+  final List<String> genres;
+  final Set<String> selectedGenres;
+
+  @override
+  State<_GenreFilterSheet> createState() => _GenreFilterSheetState();
+}
+
+class _GenreFilterSheetState extends State<_GenreFilterSheet> {
+  static const _initialSize = 0.48;
+  static const _minSize = 0.35;
+  static const _maxSize = 0.9;
+
+  final DraggableScrollableController _sheetController =
+      DraggableScrollableController();
+  late final Set<String> _draftGenres = {...widget.selectedGenres};
+
+  @override
+  void dispose() {
+    _sheetController.dispose();
+    super.dispose();
+  }
+
+  void _dragSheet(DragUpdateDetails details) {
+    if (!_sheetController.isAttached) return;
+
+    final availableHeight = MediaQuery.sizeOf(context).height;
+    final nextSize =
+        (_sheetController.size - (details.primaryDelta ?? 0) / availableHeight)
+            .clamp(_minSize, _maxSize);
+    _sheetController.jumpTo(nextSize);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      key: ValueKey('genre-chip-$label'),
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        constraints: const BoxConstraints(minWidth: 48, minHeight: 32),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.violet : const Color(0xFFF3EDF7),
-          borderRadius: BorderRadius.circular(999),
+    return DraggableScrollableSheet(
+      controller: _sheetController,
+      initialChildSize: _initialSize,
+      minChildSize: _minSize,
+      maxChildSize: _maxSize,
+      expand: false,
+      builder: (context, scrollController) => Material(
+        color: AppColors.warmWhite,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: selected ? AppColors.white : AppColors.onSurfaceVariant,
-            fontSize: 12,
-            height: 16 / 12,
-            fontWeight: FontWeight.w500,
-          ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            GestureDetector(
+              key: const ValueKey('genre-filter-drag-area'),
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragUpdate: _dragSheet,
+              child: const Column(
+                children: [
+                  SizedBox(height: 10),
+                  _SheetDragHandle(),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '장르 필터',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '여러 장르를 선택할 수 있어요',
+                        style: TextStyle(
+                          color: AppColors.onSurfaceVariant,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                itemCount: widget.genres.length,
+                itemBuilder: (context, index) {
+                  final genre = widget.genres[index];
+                  return CheckboxListTile(
+                    key: ValueKey('genre-checkbox-$genre'),
+                    value: _draftGenres.contains(genre),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    visualDensity: const VisualDensity(vertical: -3),
+                    title: Text(genre, style: const TextStyle(fontSize: 14)),
+                    onChanged: (checked) {
+                      setState(() {
+                        checked == true
+                            ? _draftGenres.add(genre)
+                            : _draftGenres.remove(genre);
+                      });
+                    },
+                  );
+                },
+              ),
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    key: const ValueKey('apply-genre-filter'),
+                    onPressed: () => Navigator.pop(context, _draftGenres),
+                    child: const Text('확인'),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+class _SheetDragHandle extends StatelessWidget {
+  const _SheetDragHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 32,
+      height: 4,
+      decoration: BoxDecoration(
+        color: AppColors.outlineVariant,
+        borderRadius: BorderRadius.circular(99),
       ),
     );
   }
