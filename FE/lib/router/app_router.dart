@@ -7,11 +7,18 @@ import '../screens/home_screen.dart';
 import '../screens/main_screen.dart';
 import '../screens/movie_detail_screen.dart';
 import '../screens/movie_list_screen.dart';
+import '../services/fake_movie_service.dart';
+import '../services/movie_list_preferences.dart';
 import '../sign_up_screen.dart';
 import '../start_screen.dart';
 
 abstract final class AppRouter {
-  static GoRouter createRouter({String initialLocation = '/start'}) {
+  static GoRouter createRouter({
+    String initialLocation = '/start',
+    MovieService movieService = const FakeMovieService(),
+    MovieListPreferences movieListPreferences =
+        const SharedPreferencesMovieListPreferences(),
+  }) {
     return GoRouter(
       initialLocation: initialLocation,
       routes: [
@@ -44,6 +51,8 @@ abstract final class AppRouter {
                     final genres = state.uri.queryParametersAll['genre'];
                     return MovieListScreen(
                       selectedGenres: genres?.toSet() ?? const <String>{},
+                      movieService: movieService,
+                      preferences: movieListPreferences,
                     );
                   },
                 ),

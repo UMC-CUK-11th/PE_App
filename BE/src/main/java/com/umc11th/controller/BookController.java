@@ -1,41 +1,50 @@
 package com.umc11th.controller;
 
+import com.umc11th.dto.res.BookResponseDTO;
+import com.umc11th.dto.req.CreateBookRequestDTO;
 import com.umc11th.service.BookService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
-@RestController // 1. "나는 데이터를 JSON으로 서빙하는 API 카운터야!"
-@RequestMapping("/books") // 2. 이 컨트롤러로 들어오는 요청의 기본 주소는 /books
+@RestController
+@RequestMapping("/books")
 @RequiredArgsConstructor
 public class BookController {
 
-    // 주방장(Service)을 주입받아 카운터 옆에 대기시킵니다.
     private final BookService bookService;
 
-    // [실습 1] 도서 전체 목록 조회 API (GET /books)
-    // 3. HTTP GET 방식으로 /books 요청이 들어왔을 때 이 메서드가 실행됩니다.
+    // [04_실습 1, 04_필수 미션 1] 도서 목록을 최신순으로 반환
+    // [04_선택 미션 2] GET /books?keyword=스프링 형태의 제목 검색 지원
     @GetMapping
-    public List<Map<String, Object>> getBooks() {
-        return bookService.getAllBooks();
+    public List<BookResponseDTO> getBooks(
+            @RequestParam(name = "keyword", required = false) String keyword
+    ) {
+        return bookService.getBooks(keyword);
     }
 
-    // [필수 미션 1] 특정 카테고리 도서 목록 조회 API
-    // GET http://localhost:8080/books/category/{categoryId}
+    // [03_필수 미션 1] GET /books/category/{categoryId}
     @GetMapping("/category/{categoryId}")
-    public List<Map<String, Object>> getBooksByCategory(
+    public List<BookResponseDTO> getBooksByCategory(
             @PathVariable("categoryId") Long categoryId
     ) {
         return bookService.getBooksByCategoryId(categoryId);
     }
 
-    // [실습 2] 신규 도서 등록 API (POST /books)
-    // POST http://localhost:8080/books
+    // [04_실습 2, 04_필수 미션 1] 검증된 요청으로 도서를 등록하고 201 반환
     @PostMapping
-    public String createBook(@RequestBody Map<String, Object> body) {
-        bookService.createBook(body);
-        return "도서 등록이 완료되었습니다!";
+    @ResponseStatus(HttpStatus.CREATED)
+    public BookResponseDTO createBook(@Valid @RequestBody CreateBookRequestDTO request) {
+        return bookService.createBook(request);
     }
 }
