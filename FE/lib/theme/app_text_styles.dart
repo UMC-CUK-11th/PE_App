@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import 'app_colors.dart';
 
 abstract final class AppTextStyles {
+  static const headline = TextStyle(
+    fontSize: 28,
+    fontWeight: FontWeight.w700,
+    color: AppColors.black,
+    height: 1.3,
+  );
+
   static const titleLarge = TextStyle(
     fontSize: 24,
     fontWeight: FontWeight.w700,
