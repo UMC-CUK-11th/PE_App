@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../widgets/common_app_bar.dart';
 import '../../widgets/movielog_text_form_field.dart';
@@ -54,45 +55,49 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     FocusScope.of(context).unfocus();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('회원가입 정보가 확인되었습니다.')),
+      const SnackBar(content: Text('회원가입이 완료되었습니다.')),
     );
+    context.go('/home');
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CommonAppBar(
-        title: '회원가입',
-        centerTitle: true,
-        onBack: () => Navigator.maybePop(context),
-      ),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isWide = constraints.maxWidth >= _wideBreakpoint;
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        appBar: const CommonAppBar(
+          title: '회원가입',
+          centerTitle: true,
+        ),
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= _wideBreakpoint;
 
-            return SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: _verticalPadding,
-              ),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: isWide ? _maxFormWidth : double.infinity,
-                    minHeight: math.max(
-                      0.0,
-                      constraints.maxHeight - _verticalPadding * 2,
+              return SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: _verticalPadding,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: isWide ? _maxFormWidth : double.infinity,
+                      minHeight: math.max(
+                        0.0,
+                        constraints.maxHeight - _verticalPadding * 2,
+                      ),
+                    ),
+                    child: IntrinsicHeight(
+                      child: _buildForm(isWide: isWide),
                     ),
                   ),
-                  child: IntrinsicHeight(
-                    child: _buildForm(isWide: isWide),
-                  ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
