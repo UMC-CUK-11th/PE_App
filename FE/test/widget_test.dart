@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:movielog/data/genre_filter.dart';
+import 'package:movielog/data/genre_preference.dart';
 import 'package:movielog/data/movie.dart';
+import 'package:movielog/data/movie_service.dart';
 import 'package:movielog/router/app_router.dart';
+import 'package:movielog/screens/movies/genre_chip_bar.dart';
+import 'package:movielog/screens/movies/genre_filter_sheet.dart';
 import 'package:movielog/screens/sign_up/sign_up_validators.dart';
 import 'package:movielog/theme/app_theme.dart';
 
@@ -21,6 +25,9 @@ Future<void> _pumpApp(
   WidgetTester tester, {
   String location = '/start',
   Size size = const Size(390, 844),
+  FakeMovieService service = const FakeMovieService(delay: Duration.zero),
+  GenrePreference? preference,
+  bool settle = true,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -29,10 +36,14 @@ Future<void> _pumpApp(
   await tester.pumpWidget(
     MaterialApp.router(
       theme: AppTheme.light,
-      routerConfig: AppRouter.createRouter(initialLocation: location),
+      routerConfig: AppRouter.createRouter(
+        initialLocation: location,
+        movieService: service,
+        genrePreference: preference ?? InMemoryGenrePreference(),
+      ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) await tester.pumpAndSettle();
 }
 
 Future<void> _fillValidSignUp(WidgetTester tester) async {
@@ -211,7 +222,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('장르 필터'), findsOneWidget);
 
-      await tester.tap(find.text('SF'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(GenreFilterSheet),
+          matching: find.text('SF'),
+        ),
+      );
       await tester.pump();
       expect(find.text('별빛 아래 우리'), findsOneWidget);
 
@@ -221,6 +237,126 @@ void main() {
       expect(find.text('우주의 끝에서'), findsOneWidget);
       expect(find.text('별빛 아래 우리'), findsNothing);
       expect(find.text('장르: SF'), findsOneWidget);
+    });
+  });
+
+  group('FakeMovieService', () {
+    const service = FakeMovieService(delay: Duration.zero);
+
+    test('성공 모드는 Mock 영화 목록을 반환한다', () async {
+      expect(await service.fetchMovies(), movies);
+    });
+
+    test('빈 목록 모드는 빈 List를 반환한다', () async {
+      expect(await service.fetchMovies(mode: MovieLoadMode.empty), isEmpty);
+    });
+
+    test('실패 모드는 MovieLoadException으로 완료된다', () {
+      expect(
+        service.fetchMovies(mode: MovieLoadMode.failure),
+        throwsA(isA<MovieLoadException>()),
+      );
+    });
+  });
+
+  group('비동기 영화 목록', () {
+    testWidgets('진입하면 Loading을 먼저 보여주고 1초 뒤 Grid를 표시한다', (tester) async {
+      await _pumpApp(
+        tester,
+        location: '/movies',
+        service: const FakeMovieService(),
+        settle: false,
+      );
+      await tester.pump();
+
+      expect(find.text('영화를 불러오는 중이에요'), findsOneWidget);
+      expect(find.byType(GridView), findsNothing);
+
+      await tester.pump(const Duration(milliseconds: 800));
+      expect(find.text('영화를 불러오는 중이에요'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      expect(find.byType(GridView), findsOneWidget);
+    });
+
+    testWidgets('빈 목록 모드에서는 Empty 화면을 보여준다', (tester) async {
+      await _pumpApp(tester, location: '/movies');
+
+      await tester.tap(find.byTooltip('불러오기 상태'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('빈 목록'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('불러올 영화가 없어요'), findsOneWidget);
+      expect(find.byType(GridView), findsNothing);
+    });
+
+    testWidgets('실패하면 Error 화면을 보여주고 다시 시도하면 목록을 불러온다', (tester) async {
+      await _pumpApp(tester, location: '/movies');
+
+      await tester.tap(find.byTooltip('불러오기 상태'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('실패'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('영화를 불러오지 못했어요'), findsOneWidget);
+      expect(find.textContaining('MovieLoadException'), findsNothing);
+
+      await tester.tap(find.text('다시 시도'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GridView), findsOneWidget);
+      expect(find.text('영화를 불러오지 못했어요'), findsNothing);
+    });
+
+    testWidgets('장르 Chip을 누르면 목록이 바뀌고 선택 장르를 저장한다', (tester) async {
+      final preference = InMemoryGenrePreference();
+      await _pumpApp(tester, location: '/movies', preference: preference);
+
+      await tester.tap(find.widgetWithText(FilterChip, 'SF'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('장르: SF'), findsOneWidget);
+      expect(find.text('우주의 끝에서'), findsOneWidget);
+      expect(find.text('별빛 아래 우리'), findsNothing);
+      expect(preference.saved, {'SF'});
+
+      final comedyChip = find.widgetWithText(FilterChip, '코미디');
+      await tester.scrollUntilVisible(
+        comedyChip,
+        100,
+        scrollable: find.descendant(
+          of: find.byType(GenreChipBar),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.tap(comedyChip);
+      await tester.pumpAndSettle();
+      expect(find.text('선택한 장르의 영화가 없어요'), findsNothing);
+
+      final sfChip = find.widgetWithText(FilterChip, 'SF');
+      await tester.scrollUntilVisible(
+        sfChip,
+        -100,
+        scrollable: find.descendant(
+          of: find.byType(GenreChipBar),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.tap(sfChip);
+      await tester.pumpAndSettle();
+      expect(find.text('선택한 장르의 영화가 없어요'), findsOneWidget);
+      expect(preference.saved, {'코미디'});
+    });
+
+    testWidgets('앱을 다시 실행하면 저장된 장르를 복원한다', (tester) async {
+      final preference = InMemoryGenrePreference({'애니메이션'});
+      await _pumpApp(tester, location: '/movies', preference: preference);
+
+      expect(find.text('장르: 애니메이션'), findsOneWidget);
+      expect(find.text('기억의 숲'), findsOneWidget);
+      expect(find.text('별빛 아래 우리'), findsNothing);
     });
   });
 
