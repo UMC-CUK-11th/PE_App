@@ -14,6 +14,12 @@ abstract final class AppTextStyles {
     color: AppColors.black,
   );
 
+  static const labelLarge = TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    color: AppColors.black,
+  );
+
   static const bodyMedium = TextStyle(
     fontSize: 16,
     fontWeight: FontWeight.w400,
@@ -25,5 +31,11 @@ abstract final class AppTextStyles {
     fontSize: 14,
     fontWeight: FontWeight.w400,
     color: AppColors.gray,
+  );
+
+  static const errorCaption = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w400,
+    color: AppColors.error,
   );
 }
