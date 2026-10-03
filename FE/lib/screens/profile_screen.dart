@@ -11,10 +11,7 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CommonAppBar(
-        title: '내 프로필',
-        centerTitle: true,
-      ),
+      appBar: const CommonAppBar(title: '내 프로필'),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -22,6 +19,8 @@ class ProfileScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: const [
               ProfileHeader(),
+              SizedBox(height: 16),
+              EditProfileButton(),
               SizedBox(height: 32),
               ProfileStats(),
               SizedBox(height: 32),
@@ -79,11 +78,11 @@ class ProfileStats extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: const [
-        Expanded(child: StatItem(label: '본 영화', value: '24')),
+        Expanded(child: StatItem(label: '본 영화', value: '342')),
         SizedBox(width: 8),
-        Expanded(child: StatItem(label: '평점', value: '18')),
+        Expanded(child: StatItem(label: '평점', value: '4.2')),
         SizedBox(width: 8),
-        Expanded(child: StatItem(label: '즐겨찾기', value: '7')),
+        Expanded(child: StatItem(label: '즐겨찾기', value: '58')),
       ],
     );
   }
@@ -122,6 +121,35 @@ class FavoriteGenres extends StatelessWidget {
               .toList(),
         ),
       ],
+    );
+  }
+}
+class EditProfileButton extends StatelessWidget {
+  const EditProfileButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: OutlinedButton(
+        onPressed: () {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text('프로필 수정은 이후 주차에 연결됩니다.'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+        },
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.violet,
+          side: const BorderSide(color: AppColors.violet),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+        child: const Text('프로필 수정'),
+      ),
     );
   }
 }
