@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/genre_filter.dart';
+import '../data/genre_preference.dart';
+import '../data/movie_service.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/main/main_screen.dart';
 import '../screens/movies/movie_detail_screen.dart';
@@ -15,8 +17,13 @@ class AppRouter {
 
   static final router = createRouter();
 
-  static GoRouter createRouter({String initialLocation = '/start'}) {
+  static GoRouter createRouter({
+    String initialLocation = '/start',
+    FakeMovieService movieService = const FakeMovieService(),
+    GenrePreference? genrePreference,
+  }) {
     final rootNavigatorKey = GlobalKey<NavigatorState>();
+    final preference = genrePreference ?? SharedPrefsGenrePreference();
 
     return GoRouter(
       navigatorKey: rootNavigatorKey,
@@ -51,6 +58,8 @@ class AppRouter {
                     selectedGenres: parseGenres(
                       state.uri.queryParameters[genresQueryKey],
                     ),
+                    movieService: movieService,
+                    genrePreference: preference,
                   ),
                   routes: [
                     GoRoute(
