@@ -12,7 +12,7 @@ public class RentalRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    // [필수 미션 2] 신규 도서 대여 기록 생성
+    // [03_필수 미션 2] 신규 도서 대여 기록 생성
     public void save(Map<String, Object> body) {
         String sql = """
                 INSERT INTO rental (user_id, book_id, rented_at, due_at)
@@ -26,7 +26,7 @@ public class RentalRepository {
         );
     }
 
-    // [선택 미션 3] 도서 반납 처리
+    // [03_선택 미션 3] 도서 반납 처리
     public void returnRental(Long rentalId) {
         String sql = "UPDATE rental SET returned_at = NOW() WHERE rental_id = ?";
 

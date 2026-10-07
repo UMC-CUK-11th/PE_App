@@ -1,0 +1,27 @@
+package com.umc11th.entity;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+@Entity
+@Table(name = "category")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class Category {
+
+    // [04_필수 미션 1] category 테이블의 기본 키 매핑
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "category_id")
+    private Long categoryId;
+
+    @Column(nullable = false)
+    private String name;
+}
