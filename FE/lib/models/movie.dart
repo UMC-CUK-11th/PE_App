@@ -5,7 +5,9 @@ class Movie {
     required this.genres,
     required this.year,
     required this.durationMinutes,
-    required this.posterAsset,
+    this.posterAsset,
+    this.posterUrl,
+    this.genreIds = const [],
     required this.rating,
     required this.synopsis,
   });
@@ -15,10 +17,18 @@ class Movie {
   final List<String> genres;
   final int year;
   final int durationMinutes;
-  final String posterAsset;
+  final String? posterAsset;
+  final String? posterUrl;
+  final List<int> genreIds;
   final double rating;
   final String synopsis;
 
   String get genreLabel => genres.join(' · ');
-  String get metadata => '$year · $genreLabel';
+  String get metadata {
+    final values = <String>[
+      if (year > 0) '$year',
+      if (genreLabel.isNotEmpty) genreLabel,
+    ];
+    return values.join(' · ');
+  }
 }

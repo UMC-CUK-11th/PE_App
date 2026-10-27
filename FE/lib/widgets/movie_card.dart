@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/movie.dart';
 import '../theme/app_colors.dart';
+import 'movie_poster.dart';
 
 class MovieCard extends StatelessWidget {
   const MovieCard({
@@ -33,11 +34,7 @@ class MovieCard extends StatelessWidget {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(compact ? 16 : 12),
-                  child: Image.asset(
-                    movie.posterAsset,
-                    fit: BoxFit.cover,
-                    semanticLabel: '${movie.title} 포스터',
-                  ),
+                  child: MoviePoster(movie: movie),
                 ),
                 if (rank != null)
                   Positioned(
@@ -49,7 +46,9 @@ class MovieCard extends StatelessWidget {
                   Positioned(
                     top: 8,
                     right: 8,
-                    child: _OverlayBadge(label: '★ ${movie.rating}'),
+                    child: _OverlayBadge(
+                      label: '★ ${movie.rating.toStringAsFixed(1)}',
+                    ),
                   ),
               ],
             ),
@@ -72,7 +71,7 @@ class MovieCard extends StatelessWidget {
                 const Icon(Icons.star, size: 13, color: Color(0xFFD0A53B)),
                 const SizedBox(width: 4),
                 Text(
-                  '${movie.rating}',
+                  movie.rating.toStringAsFixed(1),
                   style: const TextStyle(
                     color: AppColors.onSurfaceVariant,
                     fontSize: 12,
@@ -81,7 +80,7 @@ class MovieCard extends StatelessWidget {
                 ),
               ],
             )
-          else
+          else if (movie.metadata.isNotEmpty)
             Text(
               movie.metadata,
               maxLines: 1,

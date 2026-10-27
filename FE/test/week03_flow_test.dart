@@ -79,14 +79,8 @@ void main() {
     expect(find.text('우주의 끝에서'), findsOneWidget);
     expect(find.text('별빛 아래 우리'), findsNothing);
 
-    final filterBarRect = tester.getRect(
-      find.byKey(const ValueKey('genre-filter-bar')),
-    );
-    final badgeLabelRect = tester.getRect(
-      find.descendant(of: find.byType(Badge), matching: find.text('1')),
-    );
-    expect(filterBarRect.contains(badgeLabelRect.topLeft), isTrue);
-    expect(filterBarRect.contains(badgeLabelRect.bottomRight), isTrue);
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.byKey(const ValueKey('genre-filter-button')), findsOneWidget);
   });
 
   testWidgets('장르 BottomSheet 상단을 위로 드래그하면 시트가 확장된다', (tester) async {

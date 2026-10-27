@@ -2,23 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data/mock_movies.dart';
+import '../models/movie.dart';
 import '../profile_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/main_screen.dart';
 import '../screens/movie_detail_screen.dart';
 import '../screens/movie_list_screen.dart';
 import '../services/fake_movie_service.dart';
+import '../services/legacy_movie_catalog_adapter.dart';
+import '../services/movie_catalog_service.dart';
 import '../services/movie_list_preferences.dart';
+import '../services/tmdb_movie_service.dart';
 import '../sign_up_screen.dart';
 import '../start_screen.dart';
 
 abstract final class AppRouter {
   static GoRouter createRouter({
     String initialLocation = '/start',
-    MovieService movieService = const FakeMovieService(),
+    MovieService? movieService,
+    MovieCatalogService? catalogService,
     MovieListPreferences movieListPreferences =
         const SharedPreferencesMovieListPreferences(),
   }) {
+    final resolvedCatalogService =
+        catalogService ??
+        LegacyMovieCatalogAdapter(
+          movieService ?? const FakeMovieService(delay: Duration.zero),
+        );
     return GoRouter(
       initialLocation: initialLocation,
       routes: [
@@ -39,7 +49,8 @@ abstract final class AppRouter {
               routes: [
                 GoRoute(
                   path: '/home',
-                  builder: (context, state) => const HomeScreen(),
+                  builder: (context, state) =>
+                      HomeScreen(movieService: resolvedCatalogService),
                 ),
               ],
             ),
@@ -48,10 +59,13 @@ abstract final class AppRouter {
                 GoRoute(
                   path: '/movies',
                   builder: (context, state) {
-                    final genres = state.uri.queryParametersAll['genre'];
+                    final genreIds = state.uri.queryParametersAll['genreId']
+                        ?.map(int.tryParse)
+                        .whereType<int>()
+                        .toList(growable: false);
                     return MovieListScreen(
-                      selectedGenres: genres?.toSet() ?? const <String>{},
-                      movieService: movieService,
+                      selectedGenreIds: genreIds,
+                      catalogService: resolvedCatalogService,
                       preferences: movieListPreferences,
                     );
                   },
@@ -72,7 +86,9 @@ abstract final class AppRouter {
           path: '/movies/:movieId',
           builder: (context, state) {
             final id = int.tryParse(state.pathParameters['movieId'] ?? '');
-            final movie = findMovieById(id);
+            final movie = state.extra is Movie
+                ? state.extra! as Movie
+                : findMovieById(id);
             if (movie == null) {
               return const _MovieNotFoundScreen();
             }
@@ -83,7 +99,9 @@ abstract final class AppRouter {
     );
   }
 
-  static final GoRouter router = createRouter();
+  static final GoRouter router = createRouter(
+    catalogService: TmdbMovieService.fromEnvironment(),
+  );
 }
 
 class _MovieNotFoundScreen extends StatelessWidget {

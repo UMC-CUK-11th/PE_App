@@ -4,8 +4,13 @@ import '../theme/app_colors.dart';
 import 'movie_rating_input.dart';
 
 class RatingDialog extends StatefulWidget {
-  const RatingDialog({this.initialRating = 0, super.key});
+  const RatingDialog({
+    required this.movieId,
+    this.initialRating = 0,
+    super.key,
+  });
 
+  final int movieId;
   final double initialRating;
 
   @override

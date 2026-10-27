@@ -4,6 +4,7 @@ import 'package:movielog/models/movie.dart';
 import 'package:movielog/screens/movie_list_screen.dart';
 import 'package:movielog/services/fake_movie_service.dart';
 import 'package:movielog/services/movie_list_preferences.dart';
+import 'package:movielog/theme/app_colors.dart';
 
 void main() {
   const preferences = _MemoryMovieListPreferences();
@@ -34,6 +35,22 @@ void main() {
     await tester.pump();
     expect(find.byKey(const PageStorageKey('movie-grid')), findsOneWidget);
     expect(find.byType(RefreshIndicator), findsOneWidget);
+  });
+
+  testWidgets('Challenge 영화 목록은 Figma 헤더와 정렬·필터 아이콘을 사용한다', (tester) async {
+    await tester.pumpWidget(
+      testApp(service: const FakeMovieService(delay: Duration.zero)),
+    );
+    await tester.pumpAndSettle();
+
+    final title = tester.widget<Text>(
+      find.descendant(of: find.byType(AppBar), matching: find.text('영화')),
+    );
+    expect(title.style?.fontSize, 22);
+    expect(title.style?.color, AppColors.violet);
+    expect(find.byKey(const ValueKey('movie-sort-button')), findsOneWidget);
+    expect(find.byIcon(Icons.filter_alt_outlined), findsOneWidget);
+    expect(find.byType(ChoiceChip), findsNothing);
   });
 
   testWidgets('빈 결과는 Empty 화면으로 분기한다', (tester) async {
