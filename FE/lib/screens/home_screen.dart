@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
-import '../data/mock_movies.dart';
 import '../models/movie.dart';
+import '../view_models/movie_home_view_model.dart';
 import '../theme/app_colors.dart';
 import '../widgets/movie_card.dart';
+import '../widgets/tmdb_poster.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final featuredMovie = mockMovies.first;
-    final popularMovies = mockMovies.skip(1).take(4).toList();
+    final viewModel = context.watch<MovieHomeViewModel>();
+    final popularMovies = viewModel.movies;
+    final featuredMovie = popularMovies.firstOrNull;
 
     return Scaffold(
       appBar: AppBar(
@@ -72,10 +75,35 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                child: _FeaturedMovieCard(movie: featuredMovie),
-              ),
+              if (viewModel.status == MovieLoadStatus.loading)
+                const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              if (viewModel.status == MovieLoadStatus.error)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Text(viewModel.errorMessage ?? '영화를 불러오지 못했습니다.'),
+                      FilledButton(
+                        onPressed: () =>
+                            context.read<MovieHomeViewModel>().load(),
+                        child: const Text('다시 시도'),
+                      ),
+                    ],
+                  ),
+                ),
+              if (viewModel.status == MovieLoadStatus.empty)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text('인기 영화가 없습니다.'),
+                ),
+              if (featuredMovie != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  child: _FeaturedMovieCard(movie: featuredMovie),
+                ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
@@ -116,7 +144,8 @@ class HomeScreen extends StatelessWidget {
                         movie: movie,
                         rank: index + 1,
                         compact: true,
-                        onTap: () => context.push('/movies/${movie.id}'),
+                        onTap: () =>
+                            context.push('/movies/${movie.id}', extra: movie),
                       ),
                     );
                   },
@@ -144,11 +173,7 @@ class _FeaturedMovieCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Image.asset(
-              movie.posterAsset,
-              fit: BoxFit.cover,
-              semanticLabel: '${movie.title} 추천 영화 포스터',
-            ),
+            TmdbPoster(movie: movie),
             const DecoratedBox(
               decoration: BoxDecoration(color: Color(0x70000000)),
             ),
@@ -193,7 +218,7 @@ class _FeaturedMovieCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    '${movie.genreLabel} · ${movie.durationMinutes}분',
+                    movie.metadata,
                     style: const TextStyle(
                       color: Color(0xFFF8F2FA),
                       fontSize: 16,
@@ -205,7 +230,8 @@ class _FeaturedMovieCard extends StatelessWidget {
                     width: double.infinity,
                     height: 48,
                     child: ElevatedButton.icon(
-                      onPressed: () => context.push('/movies/${movie.id}'),
+                      onPressed: () =>
+                          context.push('/movies/${movie.id}', extra: movie),
                       icon: const Icon(Icons.info, size: 18),
                       label: const Text('상세보기'),
                       style: ElevatedButton.styleFrom(
