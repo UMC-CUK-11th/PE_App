@@ -1,127 +1,104 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:movielog/models/movie.dart';
+import 'package:provider/provider.dart';
 import 'package:movielog/screens/movie_list_screen.dart';
-import 'package:movielog/services/fake_movie_service.dart';
-import 'package:movielog/services/movie_list_preferences.dart';
+import 'package:movielog/view_models/movie_list_view_model.dart';
+
+import 'support/test_tmdb_service.dart';
 
 void main() {
-  const preferences = _MemoryMovieListPreferences();
-
-  Widget testApp({
-    required MovieService service,
-    Duration timeout = const Duration(seconds: 3),
-  }) {
-    return MaterialApp(
-      home: MovieListScreen(
-        selectedGenres: const {},
-        movieService: service,
-        preferences: preferences,
-        timeout: timeout,
+  Future<MovieListViewModel> pump(
+    WidgetTester tester,
+    TestTmdbService service,
+  ) async {
+    final vm = MovieListViewModel(
+      service,
+      preferences: MemoryMovieListPreferences(),
+    );
+    addTearDown(vm.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: vm,
+        child: const MaterialApp(home: MovieListScreen()),
       ),
     );
+    vm.initialize();
+    await tester.pump();
+    return vm;
   }
 
-  testWidgets('비동기 작업 중 Loading 화면을 표시한다', (tester) async {
-    await tester.pumpWidget(
-      testApp(service: const FakeMovieService(delay: Duration(seconds: 1))),
-    );
-
-    expect(find.byKey(const ValueKey('genre-filter-bar')), findsOneWidget);
-    expect(find.byKey(const ValueKey('genre-filter-button')), findsOneWidget);
+  testWidgets('Loading 중 필터와 새로고침이 잠긴다', (tester) async {
+    final service = TestTmdbService()..delay = const Duration(seconds: 1);
+    await pump(tester, service);
     expect(find.byKey(const ValueKey('movie-list-loading')), findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(find.byKey(const ValueKey('genre-filter-button')))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<FilterChip>(find.widgetWithText(FilterChip, '전체'))
+          .onSelected,
+      isNull,
+    );
+    await tester.drag(
+      find.byKey(const ValueKey('movie-list-loading')),
+      const Offset(0, 300),
+    );
     await tester.pump(const Duration(seconds: 1));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(service.calls, 1);
     expect(find.byKey(const PageStorageKey('movie-grid')), findsOneWidget);
-    expect(find.byType(RefreshIndicator), findsOneWidget);
   });
 
-  testWidgets('빈 결과는 Empty 화면으로 분기한다', (tester) async {
-    await tester.pumpWidget(
-      testApp(
-        service: const FakeMovieService(
-          delay: Duration.zero,
-          defaultMode: MovieLoadMode.empty,
-        ),
-      ),
-    );
+  testWidgets('빈 목록도 새로고침할 수 있다', (tester) async {
+    final service = TestTmdbService()..empty = true;
+    await pump(tester, service);
     await tester.pumpAndSettle();
-
     expect(find.byKey(const ValueKey('movie-list-empty')), findsOneWidget);
-  });
-
-  testWidgets('실패 결과는 Error 화면으로 분기한다', (tester) async {
-    await tester.pumpWidget(
-      testApp(
-        service: const FakeMovieService(
-          delay: Duration.zero,
-          defaultMode: MovieLoadMode.failure,
-        ),
-      ),
+    await tester.drag(
+      find.byKey(const ValueKey('movie-list-empty')),
+      const Offset(0, 400),
     );
     await tester.pumpAndSettle();
-
-    expect(find.byKey(const ValueKey('movie-list-error')), findsOneWidget);
+    expect(service.calls, 2);
   });
 
-  testWidgets('제한 시간을 넘기면 사용자용 Timeout 오류 화면을 표시한다', (tester) async {
-    await tester.pumpWidget(
-      testApp(
-        service: const FakeMovieService(delay: Duration(seconds: 1)),
-        timeout: const Duration(milliseconds: 100),
-      ),
-    );
-    await tester.pump(const Duration(milliseconds: 101));
-    await tester.pump();
-
-    expect(find.byKey(const ValueKey('movie-list-error')), findsOneWidget);
-    expect(find.textContaining('TimeoutException'), findsNothing);
-    await tester.pump(const Duration(seconds: 1));
-  });
-
-  testWidgets('다시 시도할 때 새 Future를 만들고 성공 화면으로 전환한다', (tester) async {
-    final service = _RetryMovieService();
-    await tester.pumpWidget(testApp(service: service));
-    await tester.pump();
-
-    expect(find.byKey(const ValueKey('movie-list-error')), findsOneWidget);
-    await tester.tap(find.text('다시 시도'));
-    await tester.pump();
-    expect(find.byKey(const ValueKey('movie-list-loading')), findsOneWidget);
+  testWidgets('실패 Dialog 취소는 기존 목록 유지, 재시도는 회복', (tester) async {
+    final service = TestTmdbService();
+    final vm = await pump(tester, service);
     await tester.pumpAndSettle();
-
+    service.fail = true;
+    await vm.load();
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(vm.movies.length, 6);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
     expect(find.byKey(const PageStorageKey('movie-grid')), findsOneWidget);
-    expect(service.callCount, 2);
+    await vm.load();
+    await tester.pumpAndSettle();
+    service.fail = false;
+    await tester.tap(find.text('재시도'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byKey(const PageStorageKey('movie-grid')), findsOneWidget);
+    expect(service.requestedPages, [1, 1, 1, 1]);
   });
-}
 
-class _MemoryMovieListPreferences implements MovieListPreferences {
-  const _MemoryMovieListPreferences();
-
-  @override
-  Future<MovieListPreferencesData> read() async {
-    return const MovieListPreferencesData(
-      genres: {},
-      sortOption: MovieSortOption.latest,
-    );
-  }
-
-  @override
-  Future<void> saveGenres(Set<String> genres) async {}
-
-  @override
-  Future<void> saveSortOption(MovieSortOption sortOption) async {}
-}
-
-class _RetryMovieService implements MovieService {
-  int callCount = 0;
-
-  @override
-  Future<List<Movie>> fetchMovies({MovieLoadMode? mode}) async {
-    callCount++;
-    if (callCount == 1) {
-      throw const MovieLoadException('첫 요청 실패');
-    }
-    return const FakeMovieService(delay: Duration.zero).fetchMovies();
-  }
+  testWidgets('첫 요청 실패 뒤 재시도하면 Success', (tester) async {
+    final service = TestTmdbService()..fail = true;
+    await pump(tester, service);
+    await tester.pumpAndSettle();
+    expect(find.text('영화 요청 실패'), findsOneWidget);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('movie-list-error')), findsOneWidget);
+    service.fail = false;
+    await tester.tap(find.text('다시 시도'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const PageStorageKey('movie-grid')), findsOneWidget);
+  });
 }

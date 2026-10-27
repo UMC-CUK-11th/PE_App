@@ -26,7 +26,7 @@ class MovieGrid extends StatelessWidget {
         final movie = movies[index];
         return MovieCard(
           movie: movie,
-          onTap: () => context.push('/movies/${movie.id}'),
+          onTap: () => context.push('/movies/${movie.id}', extra: movie),
         );
       },
     );

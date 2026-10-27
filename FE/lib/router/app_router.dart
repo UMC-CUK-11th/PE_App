@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../data/mock_movies.dart';
+import 'package:provider/provider.dart';
+
+import '../models/movie.dart';
+import '../services/tmdb_movie_service.dart';
+import '../view_models/movie_home_view_model.dart';
+import '../view_models/movie_list_view_model.dart';
+import '../screens/tmdb_detail_loader.dart';
 import '../profile_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/main_screen.dart';
 import '../screens/movie_detail_screen.dart';
 import '../screens/movie_list_screen.dart';
-import '../services/fake_movie_service.dart';
+
 import '../services/movie_list_preferences.dart';
 import '../sign_up_screen.dart';
 import '../start_screen.dart';
@@ -15,7 +21,7 @@ import '../start_screen.dart';
 abstract final class AppRouter {
   static GoRouter createRouter({
     String initialLocation = '/start',
-    MovieService movieService = const FakeMovieService(),
+    TmdbMovieService? tmdbService,
     MovieListPreferences movieListPreferences =
         const SharedPreferencesMovieListPreferences(),
   }) {
@@ -39,7 +45,12 @@ abstract final class AppRouter {
               routes: [
                 GoRoute(
                   path: '/home',
-                  builder: (context, state) => const HomeScreen(),
+                  builder: (context, state) => ChangeNotifierProvider(
+                    create: (context) => MovieHomeViewModel(
+                      tmdbService ?? context.read<TmdbMovieService>(),
+                    )..load(),
+                    child: const HomeScreen(),
+                  ),
                 ),
               ],
             ),
@@ -48,11 +59,16 @@ abstract final class AppRouter {
                 GoRoute(
                   path: '/movies',
                   builder: (context, state) {
-                    final genres = state.uri.queryParametersAll['genre'];
-                    return MovieListScreen(
-                      selectedGenres: genres?.toSet() ?? const <String>{},
-                      movieService: movieService,
-                      preferences: movieListPreferences,
+                    final genres = state.uri.queryParametersAll['genre']
+                        ?.map(int.tryParse)
+                        .whereType<int>()
+                        .toList();
+                    return ChangeNotifierProvider(
+                      create: (context) => MovieListViewModel(
+                        tmdbService ?? context.read<TmdbMovieService>(),
+                        preferences: movieListPreferences,
+                      )..initialize(genreIds: genres),
+                      child: const MovieListScreen(),
                     );
                   },
                 ),
@@ -72,11 +88,15 @@ abstract final class AppRouter {
           path: '/movies/:movieId',
           builder: (context, state) {
             final id = int.tryParse(state.pathParameters['movieId'] ?? '');
-            final movie = findMovieById(id);
-            if (movie == null) {
-              return const _MovieNotFoundScreen();
+            if (id == null) return const _MovieNotFoundScreen();
+            final movie = state.extra;
+            if (movie is Movie && movie.id == id) {
+              return MovieDetailScreen(movie: movie);
             }
-            return MovieDetailScreen(movie: movie);
+            return TmdbDetailLoader(
+              id: id,
+              service: tmdbService ?? context.read<TmdbMovieService>(),
+            );
           },
         ),
       ],
