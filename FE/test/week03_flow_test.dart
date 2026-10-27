@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:movielog/movie_log_app.dart';
+import 'package:movielog/app/movie_log_app.dart';
+import 'package:movielog/data/services/fake_movie_service.dart';
+import 'package:movielog/data/services/movie_list_preferences.dart';
 import 'package:movielog/router/app_router.dart';
-import 'package:movielog/services/fake_movie_service.dart';
-import 'package:movielog/services/movie_list_preferences.dart';
 
 void main() {
   Future<dynamic> pumpRoute(WidgetTester tester, String initialLocation) async {

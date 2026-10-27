@@ -192,7 +192,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '${movie.rating} (1,245)',
+                        '${movie.rating}',
                         style: const TextStyle(
                           color: AppColors.onSurfaceVariant,
                           fontSize: 12,

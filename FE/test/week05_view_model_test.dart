@@ -1,18 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:movielog/models/tmdb_genre_dto.dart';
-import 'package:movielog/models/tmdb_movie_dto.dart';
-import 'package:movielog/services/movie_catalog_service.dart';
-import 'package:movielog/viewmodels/home_view_model.dart';
-import 'package:movielog/viewmodels/movie_list_view_model.dart';
+import 'package:movielog/data/models/tmdb_genre_dto.dart';
+import 'package:movielog/data/models/tmdb_movie_dto.dart';
+import 'package:movielog/data/services/movie_catalog_service.dart';
+import 'package:movielog/view_models/movie_home_view_model.dart';
+import 'package:movielog/view_models/movie_list_view_model.dart';
 
 void main() {
-  test('HomeViewModel은 Popular 요청을 한 번만 하고 최대 5개를 보관한다', () async {
+  test('MovieHomeViewModel은 Popular 요청을 한 번만 하고 최대 5개를 보관한다', () async {
     final service = _FakeCatalogService(
       movies: [for (var id = 1; id <= 8; id++) _movie(id)],
     );
-    final viewModel = HomeViewModel(service);
+    final viewModel = MovieHomeViewModel(service);
 
     await viewModel.loadPopular();
     await viewModel.loadPopular();
@@ -59,8 +59,43 @@ void main() {
 
     expect(service.discoverCallCount, 2);
     expect(viewModel.selectedGenreIds, [28]);
-    service.pending!.complete([_movie(2)]);
+    final pending = service.pending!;
+    service.pending = null;
+    pending.complete([_movie(2)]);
     await first;
+
+    expect(service.discoverCallCount, 3);
+    expect(viewModel.selectedGenreIds, [12]);
+    expect(service.lastGenreIds, [12]);
+  });
+
+  test('장르 변경 요청이 실패하면 이전 선택과 최근 성공 목록을 복원한다', () async {
+    final service = _FakeCatalogService(movies: [_movie(1)]);
+    final viewModel = MovieListViewModel(service, initialGenreIds: const [28]);
+    await viewModel.loadInitial();
+    service.shouldFail = true;
+
+    final succeeded = await viewModel.applyGenres([12]);
+
+    expect(succeeded, isFalse);
+    expect(viewModel.selectedGenreIds, [28]);
+    expect(viewModel.movies.single.id, 1);
+  });
+
+  test('초기 장르 요청 실패 후 retry는 장르부터 다시 불러온다', () async {
+    final service = _FakeCatalogService(movies: [_movie(1)])
+      ..shouldFailGenres = true;
+    final viewModel = MovieListViewModel(service);
+    await viewModel.loadInitial();
+
+    expect(viewModel.state, ViewLoadState.error);
+    expect(service.genreCallCount, 1);
+
+    service.shouldFailGenres = false;
+    await viewModel.retry();
+
+    expect(service.genreCallCount, 2);
+    expect(viewModel.state, ViewLoadState.success);
   });
 }
 
@@ -69,13 +104,17 @@ class _FakeCatalogService implements MovieCatalogService {
 
   final List<TmdbMovieDto> movies;
   bool shouldFail = false;
+  bool shouldFailGenres = false;
   int popularCallCount = 0;
   int discoverCallCount = 0;
+  int genreCallCount = 0;
   List<int>? lastGenreIds;
   Completer<List<TmdbMovieDto>>? pending;
 
   @override
   Future<List<TmdbGenreDto>> fetchGenres() async {
+    genreCallCount++;
+    if (shouldFailGenres) throw Exception('장르 요청 실패');
     return const [
       TmdbGenreDto(id: 12, name: '모험'),
       TmdbGenreDto(id: 28, name: '액션'),

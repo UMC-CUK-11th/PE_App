@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../data/mock_movies.dart';
+import '../data/services/fake_movie_service.dart';
+import '../data/services/legacy_movie_catalog_adapter.dart';
+import '../data/services/member_api_service.dart';
+import '../data/services/movie_catalog_service.dart';
+import '../data/services/movie_list_preferences.dart';
+import '../data/services/tmdb_movie_service.dart';
 import '../models/movie.dart';
-import '../profile_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/main_screen.dart';
 import '../screens/movie_detail_screen.dart';
 import '../screens/movie_list_screen.dart';
-import '../services/fake_movie_service.dart';
-import '../services/legacy_movie_catalog_adapter.dart';
-import '../services/movie_catalog_service.dart';
-import '../services/movie_list_preferences.dart';
-import '../services/tmdb_movie_service.dart';
-import '../sign_up_screen.dart';
-import '../start_screen.dart';
+import '../screens/profile_screen.dart';
+import '../screens/register_screen.dart';
+import '../screens/start_screen.dart';
+import '../screens/week05_api_screen.dart';
 
 abstract final class AppRouter {
   static GoRouter createRouter({
@@ -38,7 +39,7 @@ abstract final class AppRouter {
         ),
         GoRoute(
           path: '/register',
-          builder: (context, state) => const SignUpScreen(),
+          builder: (context, state) => const RegisterScreen(),
         ),
         StatefulShellRoute.indexedStack(
           builder: (context, state, navigationShell) {
@@ -86,14 +87,22 @@ abstract final class AppRouter {
           path: '/movies/:movieId',
           builder: (context, state) {
             final id = int.tryParse(state.pathParameters['movieId'] ?? '');
-            final movie = state.extra is Movie
-                ? state.extra! as Movie
-                : findMovieById(id);
-            if (movie == null) {
+            if (state.extra is Movie) {
+              return MovieDetailScreen(movie: state.extra! as Movie);
+            }
+            if (id == null) {
               return const _MovieNotFoundScreen();
             }
-            return MovieDetailScreen(movie: movie);
+            return _MovieDetailLoader(
+              movieId: id,
+              catalogService: resolvedCatalogService,
+            );
           },
+        ),
+        GoRoute(
+          path: '/week05-api',
+          builder: (context, state) =>
+              Week05ApiScreen(apiService: MemberApiService.fromEnvironment()),
         ),
       ],
     );
@@ -102,6 +111,55 @@ abstract final class AppRouter {
   static final GoRouter router = createRouter(
     catalogService: TmdbMovieService.fromEnvironment(),
   );
+}
+
+class _MovieDetailLoader extends StatefulWidget {
+  const _MovieDetailLoader({
+    required this.movieId,
+    required this.catalogService,
+  });
+
+  final int movieId;
+  final MovieCatalogService catalogService;
+
+  @override
+  State<_MovieDetailLoader> createState() => _MovieDetailLoaderState();
+}
+
+class _MovieDetailLoaderState extends State<_MovieDetailLoader> {
+  late final Future<Movie?> _movie = _loadMovie();
+
+  Future<Movie?> _loadMovie() async {
+    final genres = await widget.catalogService.fetchGenres();
+    final genreNames = {for (final genre in genres) genre.id: genre.name};
+    if (widget.catalogService case final TmdbMovieService service) {
+      return (await service.fetchMovieById(widget.movieId)).toMovie(genreNames);
+    }
+    final movies = await widget.catalogService.fetchDiscover();
+    for (final movie in movies) {
+      if (movie.id == widget.movieId) return movie.toMovie(genreNames);
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Movie?>(
+      future: _movie,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final movie = snapshot.data;
+        if (snapshot.hasError || movie == null) {
+          return const _MovieNotFoundScreen();
+        }
+        return MovieDetailScreen(movie: movie);
+      },
+    );
+  }
 }
 
 class _MovieNotFoundScreen extends StatelessWidget {

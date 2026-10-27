@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:movielog/services/tmdb_logging_interceptor.dart';
+import 'package:movielog/core/network/tmdb_logging_interceptor.dart';
 
 void main() {
   test('TMDB 요청 로그에서 Authorization 원문을 마스킹한다', () async {
@@ -16,7 +16,7 @@ void main() {
     final dio = Dio(
       BaseOptions(
         baseUrl: 'https://api.themoviedb.org/3',
-        headers: const {'Authorization': 'Bearer $secret'},
+        headers: const {'authorization': 'Bearer $secret'},
       ),
     );
     dio.interceptors.addAll([

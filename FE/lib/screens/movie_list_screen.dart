@@ -1,21 +1,22 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../data/mock_movies.dart';
-import '../models/tmdb_genre_dto.dart';
-import '../models/tmdb_movie_dto.dart';
-import '../services/fake_movie_service.dart';
-import '../services/legacy_movie_catalog_adapter.dart';
-import '../services/movie_catalog_service.dart';
-import '../services/movie_list_preferences.dart';
+import '../data/models/tmdb_genre_dto.dart';
+import '../data/models/tmdb_movie_dto.dart';
+import '../data/services/fake_movie_service.dart';
+import '../data/services/legacy_movie_catalog_adapter.dart';
+import '../data/services/movie_catalog_service.dart';
+import '../data/services/movie_list_preferences.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
-import '../viewmodels/home_view_model.dart';
-import '../viewmodels/movie_list_view_model.dart';
+import '../view_models/movie_home_view_model.dart';
+import '../view_models/movie_list_view_model.dart';
 import '../widgets/movie_grid.dart';
 import '../widgets/movie_list_states.dart';
 
@@ -56,8 +57,7 @@ class _MovieListScreenState extends State<MovieListScreen> {
       _TimeoutMovieCatalogService(baseService, widget.timeout),
       initialGenreIds: initialIds,
     )..addListener(_onViewModelChanged);
-    _loadPreferences();
-    _viewModel.loadInitial();
+    unawaited(_initialize());
   }
 
   List<int>? _legacyGenreIds() {
@@ -68,10 +68,37 @@ class _MovieListScreenState extends State<MovieListScreen> {
         .toList(growable: false);
   }
 
-  Future<void> _loadPreferences() async {
-    final saved = await widget.preferences.read();
+  Future<void> _initialize() async {
+    final savedFuture = widget.preferences.read();
+    await _viewModel.loadInitial();
+    final saved = await savedFuture;
     if (!mounted) return;
     setState(() => _sortOption = saved.sortOption);
+
+    final hasRouteSelection =
+        widget.selectedGenreIds != null || widget.selectedGenres.isNotEmpty;
+    if (hasRouteSelection || saved.genres.isEmpty) return;
+    final savedIds = _viewModel.genres
+        .where((genre) => saved.genres.contains(genre.name))
+        .map((genre) => genre.id)
+        .toList(growable: false);
+    if (savedIds.isNotEmpty) await _viewModel.applyGenres(savedIds);
+  }
+
+  @override
+  void didUpdateWidget(covariant MovieListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldIds = _normalizedIds(oldWidget.selectedGenreIds);
+    final newIds = _normalizedIds(widget.selectedGenreIds);
+    if (listEquals(oldIds, newIds) ||
+        listEquals(newIds, _normalizedIds(_viewModel.selectedGenreIds))) {
+      return;
+    }
+    unawaited(_viewModel.applyGenres(newIds));
+  }
+
+  List<int> _normalizedIds(List<int>? ids) {
+    return (ids ?? const <int>[]).toSet().toList(growable: false)..sort();
   }
 
   void _onViewModelChanged() {
@@ -103,7 +130,7 @@ class _MovieListScreenState extends State<MovieListScreen> {
   }
 
   Future<void> _openGenreFilter() async {
-    if (_viewModel.isDiscoverLoading) return;
+    if (_viewModel.isGenreSelectionLocked) return;
     final result = await showModalBottomSheet<List<int>>(
       context: context,
       isScrollControlled: true,
@@ -115,7 +142,14 @@ class _MovieListScreenState extends State<MovieListScreen> {
       ),
     );
     if (result == null || !mounted) return;
-    await _viewModel.applyGenres(result);
+    final succeeded = await _viewModel.applyGenres(result);
+    if (!mounted || !succeeded) return;
+    final namesById = {
+      for (final genre in _viewModel.genres) genre.id: genre.name,
+    };
+    await widget.preferences.saveGenres(
+      result.map((id) => namesById[id]).whereType<String>().toSet(),
+    );
     if (mounted) _updateRoute(result);
   }
 
@@ -178,7 +212,7 @@ class _MovieListScreenState extends State<MovieListScreen> {
                 _MovieListToolbar(
                   selectedCount: viewModel.selectedGenreIds?.length ?? 0,
                   sortOption: _sortOption,
-                  isEnabled: !viewModel.isDiscoverLoading,
+                  isEnabled: !viewModel.isGenreSelectionLocked,
                   onSortSelected: _selectSortOption,
                   onFilterPressed: _openGenreFilter,
                 ),

@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:movielog/services/tmdb_movie_service.dart';
+import 'package:movielog/data/models/tmdb_movie_dto.dart';
+import 'package:movielog/data/services/tmdb_movie_service.dart';
 
 void main() {
   test('Popular 응답이 5개보다 적어도 범위 오류 없이 모두 반환한다', () async {
@@ -61,6 +62,35 @@ void main() {
 
     expect(genres.map((genre) => genre.id), [28, 35]);
     expect(genres.map((genre) => genre.name), ['액션', '코미디']);
+  });
+
+  test('빈 poster_path는 포스터 URL을 만들지 않는다', () async {
+    final dto = TmdbMovieDto.fromJson(_movieJson(1, posterPath: '   '));
+
+    expect(dto.toMovie(const {}).posterUrl, isNull);
+  });
+
+  test('DTO 타입 캐스트 오류를 사용자용 TMDB 예외로 변환한다', () async {
+    final dio = _fakeDio((options) {
+      return {
+        'page': 1,
+        'total_pages': 1,
+        'results': [
+          {..._movieJson(1), 'id': '잘못된 ID'},
+        ],
+      };
+    });
+
+    expect(
+      () => TmdbMovieService(dio).fetchPopular(),
+      throwsA(
+        isA<TmdbApiException>().having(
+          (error) => error.message,
+          'message',
+          contains('응답 형식이 올바르지 않습니다'),
+        ),
+      ),
+    );
   });
 }
 

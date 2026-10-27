@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:movielog/data/models/tmdb_genre_dto.dart';
+import 'package:movielog/data/models/tmdb_movie_dto.dart';
+import 'package:movielog/data/services/fake_movie_service.dart';
+import 'package:movielog/data/services/movie_catalog_service.dart';
+import 'package:movielog/data/services/movie_list_preferences.dart';
 import 'package:movielog/models/movie.dart';
 import 'package:movielog/screens/movie_list_screen.dart';
-import 'package:movielog/services/fake_movie_service.dart';
-import 'package:movielog/services/movie_list_preferences.dart';
 import 'package:movielog/theme/app_colors.dart';
 
 void main() {
@@ -30,11 +33,35 @@ void main() {
 
     expect(find.byKey(const ValueKey('genre-filter-bar')), findsOneWidget);
     expect(find.byKey(const ValueKey('genre-filter-button')), findsOneWidget);
+    expect(
+      tester
+          .widget<IconButton>(find.byKey(const ValueKey('genre-filter-button')))
+          .onPressed,
+      isNull,
+    );
     expect(find.byKey(const ValueKey('movie-list-loading')), findsOneWidget);
     await tester.pump(const Duration(seconds: 1));
     await tester.pump();
     expect(find.byKey(const PageStorageKey('movie-grid')), findsOneWidget);
     expect(find.byType(RefreshIndicator), findsOneWidget);
+  });
+
+  testWidgets('저장한 장르 이름은 장르 API 로드 후 ID로 복원한다', (tester) async {
+    final service = _RecordingCatalogService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MovieListScreen(
+          catalogService: service,
+          preferences: const _MemoryMovieListPreferences(genres: {'액션'}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(service.requestedGenreIds, [
+      null,
+      [28],
+    ]);
   });
 
   testWidgets('Challenge 영화 목록은 Figma 헤더와 정렬·필터 아이콘을 사용한다', (tester) async {
@@ -113,12 +140,14 @@ void main() {
 }
 
 class _MemoryMovieListPreferences implements MovieListPreferences {
-  const _MemoryMovieListPreferences();
+  const _MemoryMovieListPreferences({this.genres = const {}});
+
+  final Set<String> genres;
 
   @override
   Future<MovieListPreferencesData> read() async {
-    return const MovieListPreferencesData(
-      genres: {},
+    return MovieListPreferencesData(
+      genres: genres,
       sortOption: MovieSortOption.latest,
     );
   }
@@ -128,6 +157,32 @@ class _MemoryMovieListPreferences implements MovieListPreferences {
 
   @override
   Future<void> saveSortOption(MovieSortOption sortOption) async {}
+}
+
+class _RecordingCatalogService implements MovieCatalogService {
+  final List<List<int>?> requestedGenreIds = [];
+
+  @override
+  Future<List<TmdbGenreDto>> fetchGenres() async {
+    return const [TmdbGenreDto(id: 28, name: '액션')];
+  }
+
+  @override
+  Future<List<TmdbMovieDto>> fetchPopular() async => const [];
+
+  @override
+  Future<List<TmdbMovieDto>> fetchDiscover({List<int>? genreIds}) async {
+    requestedGenreIds.add(genreIds == null ? null : List<int>.of(genreIds));
+    return const [
+      TmdbMovieDto(
+        id: 1,
+        title: '테스트 영화',
+        genreIds: [28],
+        voteAverage: 8,
+        overview: '줄거리',
+      ),
+    ];
+  }
 }
 
 class _RetryMovieService implements MovieService {

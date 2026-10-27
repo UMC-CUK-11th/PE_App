@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/data/mock_movies.dart';
-import 'package:movielog/services/fake_movie_service.dart';
+import 'package:movielog/data/services/fake_movie_service.dart';
 
 void main() {
   const service = FakeMovieService(delay: Duration.zero);

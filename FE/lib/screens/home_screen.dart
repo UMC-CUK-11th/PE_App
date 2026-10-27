@@ -3,10 +3,10 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../data/services/movie_catalog_service.dart';
 import '../models/movie.dart';
-import '../services/movie_catalog_service.dart';
 import '../theme/app_colors.dart';
-import '../viewmodels/home_view_model.dart';
+import '../view_models/movie_home_view_model.dart';
 import '../widgets/movie_card.dart';
 import '../widgets/movie_list_states.dart';
 import '../widgets/movie_poster.dart';
@@ -21,12 +21,12 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late final HomeViewModel _viewModel;
+  late final MovieHomeViewModel _viewModel;
 
   @override
   void initState() {
     super.initState();
-    _viewModel = HomeViewModel(widget.movieService)..loadPopular();
+    _viewModel = MovieHomeViewModel(widget.movieService)..loadPopular();
   }
 
   @override
@@ -49,7 +49,7 @@ class _HomeView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final viewModel = context.watch<HomeViewModel>();
+    final viewModel = context.watch<MovieHomeViewModel>();
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 64,
