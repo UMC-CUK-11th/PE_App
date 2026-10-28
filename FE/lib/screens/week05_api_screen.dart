@@ -37,10 +37,6 @@ class _Week05ApiScreenState extends State<Week05ApiScreen> {
 
   Future<void> _checkAllApis() async {
     final memberId = int.tryParse(_memberIdController.text.trim());
-    if (memberId == null || memberId < 1) {
-      setState(() => _errorMessage = '회원 ID는 1 이상의 숫자여야 합니다.');
-      return;
-    }
 
     setState(() {
       _isLoading = true;
@@ -53,7 +49,9 @@ class _Week05ApiScreenState extends State<Week05ApiScreen> {
     bool? nicknameAvailable;
     bool? emailAvailable;
     List<MemberRating>? ratings;
-    final errors = <String>[];
+    final errors = <String>[
+      if (memberId == null || memberId < 1) '평점 API: 회원 ID는 1 이상의 숫자여야 합니다.',
+    ];
 
     try {
       nicknameAvailable = await widget.apiService.isNicknameAvailable(
@@ -69,10 +67,12 @@ class _Week05ApiScreenState extends State<Week05ApiScreen> {
     } on Object catch (error) {
       errors.add('이메일 API: ${_apiErrorMessage(error)}');
     }
-    try {
-      ratings = await widget.apiService.fetchRatings(memberId);
-    } on Object catch (error) {
-      errors.add('평점 API: ${_apiErrorMessage(error)}');
+    if (memberId != null && memberId >= 1) {
+      try {
+        ratings = await widget.apiService.fetchRatings(memberId);
+      } on Object catch (error) {
+        errors.add('평점 API: ${_apiErrorMessage(error)}');
+      }
     }
 
     if (!mounted) return;
@@ -111,18 +111,24 @@ class _Week05ApiScreenState extends State<Week05ApiScreen> {
               style: AppTextStyles.bodyMedium,
             ),
             const SizedBox(height: 24),
-            _ApiInput(label: '닉네임', controller: _nicknameController),
+            _ApiInput(
+              label: '닉네임',
+              controller: _nicknameController,
+              enabled: !_isLoading,
+            ),
             const SizedBox(height: 12),
             _ApiInput(
               label: '이메일',
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
+              enabled: !_isLoading,
             ),
             const SizedBox(height: 12),
             _ApiInput(
               label: '회원 ID',
               controller: _memberIdController,
               keyboardType: TextInputType.number,
+              enabled: !_isLoading,
             ),
             const SizedBox(height: 20),
             FilledButton.icon(
@@ -184,17 +190,20 @@ class _ApiInput extends StatelessWidget {
     required this.label,
     required this.controller,
     this.keyboardType,
+    this.enabled = true,
   });
 
   final String label;
   final TextEditingController controller;
   final TextInputType? keyboardType;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
+      enabled: enabled,
       decoration: InputDecoration(
         labelText: label,
         border: const OutlineInputBorder(),

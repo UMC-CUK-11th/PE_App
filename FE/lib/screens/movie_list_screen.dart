@@ -152,10 +152,14 @@ class _MovieListScreenState extends State<MovieListScreen> {
     final namesById = {
       for (final genre in _viewModel.genres) genre.id: genre.name,
     };
-    await widget.preferences.saveGenres(
-      appliedIds.map((id) => namesById[id]).whereType<String>().toSet(),
-    );
-    if (mounted) _updateRoute(appliedIds);
+    _updateRoute(appliedIds);
+    try {
+      await widget.preferences.saveGenres(
+        appliedIds.map((id) => namesById[id]).whereType<String>().toSet(),
+      );
+    } on Object catch (error) {
+      debugPrint('장르 설정을 저장하지 못했습니다: $error');
+    }
   }
 
   void _updateRoute(List<int> genreIds) {

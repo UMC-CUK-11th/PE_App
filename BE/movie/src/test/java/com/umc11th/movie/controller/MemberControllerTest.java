@@ -63,7 +63,9 @@ class MemberControllerTest {
                 .andExpect(jsonPath("$[0].ratingId").value(3))
                 .andExpect(jsonPath("$[0].movieId").value(550))
                 .andExpect(jsonPath("$[0].score").value(5))
-                .andExpect(jsonPath("$[0].comment").value("최고의 영화!"));
+                .andExpect(jsonPath("$[0].comment").value("최고의 영화!"))
+                .andExpect(jsonPath("$[0].createdAt").exists())
+                .andExpect(jsonPath("$[0].updatedAt").exists());
 
         verify(ratingService).getRatings(1L, 1, 5);
     }

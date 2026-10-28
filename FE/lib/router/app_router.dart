@@ -161,6 +161,10 @@ class _MovieDetailLoaderState extends State<_MovieDetailLoader> {
           );
         }
         if (snapshot.hasError) {
+          final error = snapshot.error;
+          if (error is TmdbApiException && error.statusCode == 404) {
+            return const _MovieNotFoundScreen();
+          }
           return _MovieDetailErrorScreen(onRetry: _retry);
         }
         final movie = snapshot.data;
