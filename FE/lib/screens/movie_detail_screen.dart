@@ -8,6 +8,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/common_app_bar.dart';
 import '../widgets/rating_dialog.dart';
+import '../widgets/movie_poster.dart';
 
 class MovieDetailScreen extends StatefulWidget {
   const MovieDetailScreen({required this.movie, super.key});
@@ -45,7 +46,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   Future<void> _openRatingDialog() async {
     final rating = await showDialog<double>(
       context: context,
-      builder: (context) => RatingDialog(initialRating: _myRating),
+      builder: (context) =>
+          RatingDialog(movieId: widget.movie.id, initialRating: _myRating),
     );
     if (rating == null || !mounted) return;
 
@@ -148,15 +150,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(
-              height: 585,
-              child: Image.asset(
-                movie.posterAsset,
-                fit: BoxFit.cover,
-                alignment: Alignment.center,
-                semanticLabel: '${movie.title} 상세 포스터',
-              ),
-            ),
+            SizedBox(height: 585, child: MoviePoster(movie: movie)),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
               child: Column(
@@ -173,7 +167,12 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${movie.year} · ${movie.genreLabel} · ${movie.durationMinutes}분',
+                    [
+                      if (movie.year > 0) '${movie.year}',
+                      if (movie.genreLabel.isNotEmpty) movie.genreLabel,
+                      if (movie.durationMinutes > 0)
+                        '${movie.durationMinutes}분',
+                    ].join(' · '),
                     style: const TextStyle(
                       color: AppColors.onSurfaceVariant,
                       fontSize: 14,
@@ -193,7 +192,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '${movie.rating} (1,245)',
+                        '${movie.rating}',
                         style: const TextStyle(
                           color: AppColors.onSurfaceVariant,
                           fontSize: 12,
