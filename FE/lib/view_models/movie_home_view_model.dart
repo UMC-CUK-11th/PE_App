@@ -21,10 +21,17 @@ class MovieHomeViewModel extends ChangeNotifier {
     state = ViewLoadState.loading;
     notifyListeners();
     try {
+      var genreNames = <int, String>{};
+      try {
+        final genres = await _service.fetchGenres();
+        genreNames = {for (final genre in genres) genre.id: genre.name};
+      } on Object {
+        // Popular 목록은 장르 조회가 실패해도 표시한다.
+      }
       final dtos = await _service.fetchPopular();
       movies = dtos
           .take(5)
-          .map((dto) => dto.toMovie(const {}))
+          .map((dto) => dto.toMovie(genreNames))
           .toList(growable: false);
       state = movies.isEmpty ? ViewLoadState.empty : ViewLoadState.success;
     } on Object catch (error) {

@@ -33,15 +33,25 @@ class MovieListViewModel extends ChangeNotifier {
     for (final genre in genres) genre.id: genre.name,
   };
 
-  Future<void> loadInitial() async {
+  Future<void> loadInitial({Set<String> preferredGenreNames = const {}}) async {
     if (isDiscoverLoading) return;
     state = ViewLoadState.loading;
     notifyListeners();
     try {
       genres = await _service.fetchGenres();
+      if (selectedGenreIds == null && preferredGenreNames.isNotEmpty) {
+        selectedGenreIds = _normalizeGenres(
+          genres
+              .where((genre) => preferredGenreNames.contains(genre.name))
+              .map((genre) => genre.id),
+        );
+      } else if (selectedGenreIds != null) {
+        selectedGenreIds = _normalizeGenres(selectedGenreIds!);
+      }
       await _loadDiscover(genreIds: selectedGenreIds, clearWhileLoading: true);
     } on Object catch (error) {
       _handleFailure(error, fallback: const []);
+      return;
     }
     await _applyPendingGenresIfNeeded();
   }
@@ -127,7 +137,13 @@ class MovieListViewModel extends ChangeNotifier {
   }
 
   List<int>? _normalizeGenres(Iterable<int> genreIds) {
-    final normalized = genreIds.toSet().toList(growable: false)..sort();
+    final validIds = genres.map((genre) => genre.id).toSet();
+    final normalized =
+        genreIds
+            .where((id) => validIds.isEmpty || validIds.contains(id))
+            .toSet()
+            .toList(growable: false)
+          ..sort();
     return normalized.isEmpty ? null : normalized;
   }
 

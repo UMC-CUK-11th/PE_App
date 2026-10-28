@@ -45,36 +45,51 @@ class _Week05ApiScreenState extends State<Week05ApiScreen> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _nicknameAvailable = null;
+      _emailAvailable = null;
+      _ratings = null;
     });
 
+    bool? nicknameAvailable;
+    bool? emailAvailable;
+    List<MemberRating>? ratings;
+    final errors = <String>[];
+
     try {
-      final nicknameAvailable = await widget.apiService.isNicknameAvailable(
+      nicknameAvailable = await widget.apiService.isNicknameAvailable(
         _nicknameController.text.trim(),
       );
-      final emailAvailable = await widget.apiService.isEmailAvailable(
+    } on Object catch (error) {
+      errors.add('닉네임 API: ${_apiErrorMessage(error)}');
+    }
+    try {
+      emailAvailable = await widget.apiService.isEmailAvailable(
         _emailController.text.trim(),
       );
-      final ratings = await widget.apiService.fetchRatings(memberId);
-
-      if (!mounted) return;
-      setState(() {
-        _nicknameAvailable = nicknameAvailable;
-        _emailAvailable = emailAvailable;
-        _ratings = ratings;
-      });
-    } on DioException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _errorMessage =
-            error.response?.data?.toString() ??
-            '백엔드에 연결하지 못했습니다. API 주소와 서버 상태를 확인해주세요.';
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _errorMessage = '응답을 처리하지 못했습니다.');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+    } on Object catch (error) {
+      errors.add('이메일 API: ${_apiErrorMessage(error)}');
     }
+    try {
+      ratings = await widget.apiService.fetchRatings(memberId);
+    } on Object catch (error) {
+      errors.add('평점 API: ${_apiErrorMessage(error)}');
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _nicknameAvailable = nicknameAvailable;
+      _emailAvailable = emailAvailable;
+      _ratings = ratings;
+      _errorMessage = errors.isEmpty ? null : errors.join('\n');
+      _isLoading = false;
+    });
+  }
+
+  String _apiErrorMessage(Object error) {
+    if (error is DioException) {
+      return error.response?.data?.toString() ?? '백엔드 주소와 서버 상태를 확인해주세요.';
+    }
+    return '응답을 처리하지 못했습니다.';
   }
 
   @override

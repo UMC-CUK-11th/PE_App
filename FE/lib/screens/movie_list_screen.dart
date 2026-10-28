@@ -69,20 +69,23 @@ class _MovieListScreenState extends State<MovieListScreen> {
   }
 
   Future<void> _initialize() async {
-    final savedFuture = widget.preferences.read();
-    await _viewModel.loadInitial();
-    final saved = await savedFuture;
+    MovieListPreferencesData saved;
+    try {
+      saved = await widget.preferences.read();
+    } on Object {
+      saved = const MovieListPreferencesData(
+        genres: {},
+        sortOption: MovieSortOption.latest,
+      );
+    }
     if (!mounted) return;
     setState(() => _sortOption = saved.sortOption);
 
     final hasRouteSelection =
         widget.selectedGenreIds != null || widget.selectedGenres.isNotEmpty;
-    if (hasRouteSelection || saved.genres.isEmpty) return;
-    final savedIds = _viewModel.genres
-        .where((genre) => saved.genres.contains(genre.name))
-        .map((genre) => genre.id)
-        .toList(growable: false);
-    if (savedIds.isNotEmpty) await _viewModel.applyGenres(savedIds);
+    await _viewModel.loadInitial(
+      preferredGenreNames: hasRouteSelection ? const {} : saved.genres,
+    );
   }
 
   @override
@@ -144,13 +147,15 @@ class _MovieListScreenState extends State<MovieListScreen> {
     if (result == null || !mounted) return;
     final succeeded = await _viewModel.applyGenres(result);
     if (!mounted || !succeeded) return;
+    final appliedIds = _normalizedIds(_viewModel.selectedGenreIds);
+    if (!listEquals(_normalizedIds(result), appliedIds)) return;
     final namesById = {
       for (final genre in _viewModel.genres) genre.id: genre.name,
     };
     await widget.preferences.saveGenres(
-      result.map((id) => namesById[id]).whereType<String>().toSet(),
+      appliedIds.map((id) => namesById[id]).whereType<String>().toSet(),
     );
-    if (mounted) _updateRoute(result);
+    if (mounted) _updateRoute(appliedIds);
   }
 
   void _updateRoute(List<int> genreIds) {

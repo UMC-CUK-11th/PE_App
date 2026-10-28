@@ -59,7 +59,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(service.requestedGenreIds, [
-      null,
       [28],
     ]);
   });

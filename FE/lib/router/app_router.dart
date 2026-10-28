@@ -87,13 +87,11 @@ abstract final class AppRouter {
           path: '/movies/:movieId',
           builder: (context, state) {
             final id = int.tryParse(state.pathParameters['movieId'] ?? '');
-            if (state.extra is Movie) {
-              return MovieDetailScreen(movie: state.extra! as Movie);
-            }
             if (id == null) {
               return const _MovieNotFoundScreen();
             }
             return _MovieDetailLoader(
+              key: ValueKey(id),
               movieId: id,
               catalogService: resolvedCatalogService,
             );
@@ -117,6 +115,7 @@ class _MovieDetailLoader extends StatefulWidget {
   const _MovieDetailLoader({
     required this.movieId,
     required this.catalogService,
+    super.key,
   });
 
   final int movieId;
@@ -127,11 +126,16 @@ class _MovieDetailLoader extends StatefulWidget {
 }
 
 class _MovieDetailLoaderState extends State<_MovieDetailLoader> {
-  late final Future<Movie?> _movie = _loadMovie();
+  late Future<Movie?> _movie = _loadMovie();
 
   Future<Movie?> _loadMovie() async {
-    final genres = await widget.catalogService.fetchGenres();
-    final genreNames = {for (final genre in genres) genre.id: genre.name};
+    var genreNames = <int, String>{};
+    try {
+      final genres = await widget.catalogService.fetchGenres();
+      genreNames = {for (final genre in genres) genre.id: genre.name};
+    } on Object {
+      // 장르 정보가 없어도 영화 상세 조회는 계속한다.
+    }
     if (widget.catalogService case final TmdbMovieService service) {
       return (await service.fetchMovieById(widget.movieId)).toMovie(genreNames);
     }
@@ -140,6 +144,10 @@ class _MovieDetailLoaderState extends State<_MovieDetailLoader> {
       if (movie.id == widget.movieId) return movie.toMovie(genreNames);
     }
     return null;
+  }
+
+  void _retry() {
+    setState(() => _movie = _loadMovie());
   }
 
   @override
@@ -152,12 +160,41 @@ class _MovieDetailLoaderState extends State<_MovieDetailLoader> {
             body: Center(child: CircularProgressIndicator()),
           );
         }
+        if (snapshot.hasError) {
+          return _MovieDetailErrorScreen(onRetry: _retry);
+        }
         final movie = snapshot.data;
-        if (snapshot.hasError || movie == null) {
+        if (movie == null) {
           return const _MovieNotFoundScreen();
         }
         return MovieDetailScreen(movie: movie);
       },
+    );
+  }
+}
+
+class _MovieDetailErrorScreen extends StatelessWidget {
+  const _MovieDetailErrorScreen({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: BackButton(onPressed: () => context.go('/movies')),
+        title: const Text('영화 상세'),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('영화 정보를 불러오지 못했습니다.'),
+            const SizedBox(height: 16),
+            FilledButton(onPressed: onRetry, child: const Text('다시 시도')),
+          ],
+        ),
+      ),
     );
   }
 }

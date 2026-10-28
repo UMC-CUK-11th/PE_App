@@ -15,8 +15,10 @@ void main() {
   });
 
   test('평점 목록을 DTO로 변환한다', () async {
+    RequestOptions? capturedRequest;
     final service = MemberApiService(
-      _fakeDio((_) {
+      _fakeDio((options) {
+        capturedRequest = options;
         return [
           {
             'ratingId': 1,
@@ -35,6 +37,8 @@ void main() {
     expect(ratings, hasLength(1));
     expect(ratings.single.movieId, 550);
     expect(ratings.single.score, 5);
+    expect(capturedRequest?.path, '/members/1/ratings');
+    expect(capturedRequest?.queryParameters, {'page': 0, 'size': 10});
   });
 }
 

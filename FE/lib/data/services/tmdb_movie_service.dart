@@ -22,6 +22,7 @@ class TmdbMovieService implements MovieCatalogService {
       TmdbMovieService(createTmdbClient());
 
   final Dio _dio;
+  static const int _maxDiscoverPages = 5;
 
   @override
   Future<List<TmdbMovieDto>> fetchPopular() async {
@@ -65,7 +66,9 @@ class TmdbMovieService implements MovieCatalogService {
         if (uniqueMovies.length == 30) break;
       }
       pageNumber++;
-    } while (uniqueMovies.length < 30 && pageNumber <= totalPages);
+    } while (uniqueMovies.length < 30 &&
+        pageNumber <= totalPages &&
+        pageNumber <= _maxDiscoverPages);
 
     return uniqueMovies.values.take(30).toList(growable: false);
   }

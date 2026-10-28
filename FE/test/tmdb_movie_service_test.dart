@@ -48,6 +48,23 @@ void main() {
     expect(requestedGenres, ['12|16', '12|16']);
   });
 
+  test('Discover는 중복 결과가 계속되어도 5페이지에서 요청을 멈춘다', () async {
+    var callCount = 0;
+    final dio = _fakeDio((options) {
+      callCount++;
+      return {
+        'page': options.queryParameters['page'],
+        'total_pages': 100,
+        'results': [_movieJson(1)],
+      };
+    });
+
+    final movies = await TmdbMovieService(dio).fetchDiscover();
+
+    expect(movies, hasLength(1));
+    expect(callCount, 5);
+  });
+
   test('Genre 응답의 id와 name을 변환한다', () async {
     final dio = _fakeDio((options) {
       return {
@@ -68,6 +85,15 @@ void main() {
     final dto = TmdbMovieDto.fromJson(_movieJson(1, posterPath: '   '));
 
     expect(dto.toMovie(const {}).posterUrl, isNull);
+  });
+
+  test('유효한 poster_path는 TMDB 이미지 URL로 변환한다', () async {
+    final dto = TmdbMovieDto.fromJson(_movieJson(1));
+
+    expect(
+      dto.toMovie(const {}).posterUrl,
+      'https://image.tmdb.org/t/p/w500/poster.jpg',
+    );
   });
 
   test('DTO 타입 캐스트 오류를 사용자용 TMDB 예외로 변환한다', () async {
