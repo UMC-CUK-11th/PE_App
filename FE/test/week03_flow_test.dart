@@ -3,7 +3,9 @@ import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/movie_log_app.dart';
 import 'package:movielog/router/app_router.dart';
-import 'package:movielog/services/fake_movie_service.dart';
+
+import 'support/test_tmdb_service.dart';
+
 import 'package:movielog/services/movie_list_preferences.dart';
 
 void main() {
@@ -12,7 +14,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     final router = AppRouter.createRouter(
       initialLocation: initialLocation,
-      movieService: const FakeMovieService(delay: Duration.zero),
+      tmdbService: TestTmdbService(),
       movieListPreferences: const _MemoryMovieListPreferences(),
     );
     addTearDown(router.dispose);
@@ -63,7 +65,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('장르 필터'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('genre-checkbox-SF')));
+    await tester.tap(find.byKey(const ValueKey('genre-checkbox-878')));
     await tester.pump();
 
     // BottomSheet에서 고르는 동안에는 기존 목록에 바로 반영하지 않는다.
@@ -74,7 +76,7 @@ void main() {
 
     expect(
       router.routeInformationProvider.value.uri.queryParameters['genre'],
-      'SF',
+      '878',
     );
     expect(find.text('우주의 끝에서'), findsOneWidget);
     expect(find.text('별빛 아래 우리'), findsNothing);
@@ -108,14 +110,14 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('genre-filter-button')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('genre-checkbox-SF')));
-    await tester.tap(find.byKey(const ValueKey('genre-checkbox-로맨스')));
+    await tester.tap(find.byKey(const ValueKey('genre-checkbox-878')));
+    await tester.tap(find.byKey(const ValueKey('genre-checkbox-10749')));
     await tester.tap(find.byKey(const ValueKey('apply-genre-filter')));
     await tester.pumpAndSettle();
 
     expect(
       router.routeInformationProvider.value.uri.queryParametersAll['genre'],
-      containsAll(<String>['SF', '로맨스']),
+      containsAll(<String>['878', '10749']),
     );
     expect(find.text('우주의 끝에서'), findsOneWidget);
     expect(find.text('별빛 아래 우리'), findsOneWidget);

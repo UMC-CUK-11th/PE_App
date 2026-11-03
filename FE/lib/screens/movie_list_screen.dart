@@ -1,259 +1,196 @@
-import 'dart:async';
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
-import '../data/mock_movies.dart';
-import '../models/movie.dart';
-import '../services/fake_movie_service.dart';
+import '../models/tmdb_movie_dto.dart';
 import '../services/movie_list_preferences.dart';
 import '../theme/app_colors.dart';
+import '../view_models/movie_home_view_model.dart';
+import '../view_models/movie_list_view_model.dart';
 import '../widgets/movie_grid.dart';
 import '../widgets/movie_list_states.dart';
 
 class MovieListScreen extends StatefulWidget {
-  const MovieListScreen({
-    required this.selectedGenres,
-    this.movieService = const FakeMovieService(),
-    this.preferences = const SharedPreferencesMovieListPreferences(),
-    this.timeout = const Duration(seconds: 3),
-    super.key,
-  });
-
-  final Set<String> selectedGenres;
-  final MovieService movieService;
-  final MovieListPreferences preferences;
-  final Duration timeout;
+  const MovieListScreen({super.key});
 
   @override
   State<MovieListScreen> createState() => _MovieListScreenState();
 }
 
 class _MovieListScreenState extends State<MovieListScreen> {
-  late Future<_MovieListInitialData> _initialDataFuture;
-  Set<String>? _selectedGenresOverride;
-  MovieSortOption? _sortOptionOverride;
+  MovieListViewModel? _viewModel;
+  int _seenFailure = 0;
+  bool _dialogOpen = false;
 
   @override
-  void initState() {
-    super.initState();
-    _initialDataFuture = _loadInitialData();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = context.read<MovieListViewModel>();
+    if (identical(next, _viewModel)) return;
+    _viewModel?.removeListener(_onChanged);
+    _viewModel = next;
+    _viewModel!.addListener(_onChanged);
+    _onChanged();
   }
 
-  @override
-  void didUpdateWidget(covariant MovieListScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!setEquals(oldWidget.selectedGenres, widget.selectedGenres)) {
-      _selectedGenresOverride = widget.selectedGenres;
-    }
-  }
-
-  Future<_MovieListInitialData> _loadInitialData() async {
-    try {
-      final results = await Future.wait<Object>([
-        widget.movieService.fetchMovies().timeout(widget.timeout),
-        widget.preferences.read(),
-      ]);
-      final preferences = results[1] as MovieListPreferencesData;
-      return _MovieListInitialData(
-        movies: results[0] as List<Movie>,
-        selectedGenres: widget.selectedGenres.isEmpty
-            ? preferences.genres
-            : widget.selectedGenres,
-        sortOption: preferences.sortOption,
+  void _onChanged() {
+    final vm = _viewModel!;
+    if (vm.failureRevision <= _seenFailure || _dialogOpen) return;
+    _seenFailure = vm.failureRevision;
+    _dialogOpen = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final retry = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('영화 요청 실패'),
+          content: Text(vm.errorMessage ?? '네트워크 연결을 확인해 주세요.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('재시도'),
+            ),
+          ],
+        ),
       );
-    } on TimeoutException {
-      throw const MovieLoadException('영화 요청 시간이 초과되었습니다.');
-    }
-  }
-
-  void _retry() {
-    setState(() {
-      _initialDataFuture = _loadInitialData();
+      _dialogOpen = false;
+      if (retry == true && mounted) await vm.load();
     });
   }
 
-  Future<void> _refresh() async {
-    final nextFuture = _loadInitialData();
-    setState(() {
-      _initialDataFuture = nextFuture;
-    });
-    try {
-      await nextFuture;
-    } on Object {
-      // FutureBuilder가 사용자용 오류 화면으로 전환합니다.
-    }
+  @override
+  void dispose() {
+    _viewModel?.removeListener(_onChanged);
+    super.dispose();
   }
 
-  Future<void> _applyGenres(Set<String> genres) async {
-    setState(() {
-      _selectedGenresOverride = genres;
-    });
-
-    final uri = Uri(
-      path: '/movies',
-      queryParameters: genres.isEmpty ? null : {'genre': genres.toList()},
-    );
-    context.go(uri.toString());
-    await widget.preferences.saveGenres(genres);
-  }
-
-  Future<void> _openGenreFilter(Set<String> selectedGenres) async {
-    final result = await showModalBottomSheet<Set<String>>(
+  Future<void> _openGenreFilter() async {
+    final vm = context.read<MovieListViewModel>();
+    if (vm.isLoading) return;
+    final result = await showModalBottomSheet<Set<int>>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (context) => _GenreFilterSheet(
-        genres: movieGenres,
-        selectedGenres: selectedGenres,
+        genres: vm.genres,
+        selectedGenres: vm.selectedGenreIds?.toSet() ?? {},
       ),
     );
-    if (result == null || !mounted) return;
-    await _applyGenres(result);
-  }
-
-  Future<void> _selectSortOption(MovieSortOption sortOption) async {
-    setState(() {
-      _sortOptionOverride = sortOption;
-    });
-    await widget.preferences.saveSortOption(sortOption);
-  }
-
-  List<Movie> _visibleMovies({
-    required List<Movie> movies,
-    required Set<String> selectedGenres,
-    required MovieSortOption sortOption,
-  }) {
-    final filteredMovies = selectedGenres.isEmpty
-        ? List<Movie>.of(movies)
-        : movies
-              .where((movie) => movie.genres.any(selectedGenres.contains))
-              .toList();
-
-    switch (sortOption) {
-      case MovieSortOption.latest:
-        filteredMovies.sort((a, b) {
-          final yearComparison = b.year.compareTo(a.year);
-          return yearComparison != 0 ? yearComparison : a.id.compareTo(b.id);
-        });
-      case MovieSortOption.rating:
-        filteredMovies.sort((a, b) => b.rating.compareTo(a.rating));
-      case MovieSortOption.title:
-        filteredMovies.sort((a, b) => a.title.compareTo(b.title));
-    }
-    return filteredMovies;
+    if (result == null || !mounted || vm.isLoading) return;
+    final uri = Uri(
+      path: '/movies',
+      queryParameters: result.isEmpty
+          ? null
+          : {'genre': result.map((id) => '$id').toList()},
+    );
+    context.go(uri.toString());
+    await vm.selectGenres(result.toList());
   }
 
   @override
   Widget build(BuildContext context) {
+    final vm = context.watch<MovieListViewModel>();
+    final movies = vm.visibleMovies;
+    Widget content;
+    if (vm.isLoading && movies.isEmpty) {
+      content = const MovieListLoading();
+    } else if (vm.status == MovieLoadStatus.error && movies.isEmpty) {
+      content = MovieListError(
+        onRetry: () => context.read<MovieListViewModel>().load(),
+      );
+    } else {
+      content = movies.isEmpty
+          ? const MovieListEmpty()
+          : MovieGrid(movies: movies);
+    }
     return Scaffold(
       appBar: AppBar(
-        toolbarHeight: 64,
+        title: const Text('영화'),
         titleSpacing: 16,
-        title: const Text(
-          '영화',
-          style: TextStyle(
-            color: AppColors.onPrimaryContainer,
-            fontSize: 22,
-            height: 28 / 22,
-            fontWeight: FontWeight.w500,
+        toolbarHeight: 64,
+      ),
+      body: Column(
+        children: [
+          _MovieListToolbar(
+            selectedCount: vm.selectedGenreIds?.length ?? 0,
+            sortOption: vm.sortOption,
+            onSortSelected: (option) =>
+                context.read<MovieListViewModel>().setSortOption(option),
+            onFilterPressed: vm.isLoading || vm.genres.isEmpty
+                ? null
+                : _openGenreFilter,
           ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: IconButton(
-              tooltip: '영화 검색',
-              onPressed: () {},
-              padding: const EdgeInsets.all(14),
-              icon: SvgPicture.asset(
-                'assets/icons/search.svg',
-                width: 20,
-                height: 20,
-                colorFilter: const ColorFilter.mode(
-                  AppColors.onSurfaceVariant,
-                  BlendMode.srcIn,
-                ),
+          if (vm.genres.isNotEmpty)
+            SizedBox(
+              height: 54,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      label: const Text('전체'),
+                      selected:
+                          vm.selectedGenreIds == null ||
+                          vm.selectedGenreIds!.isEmpty,
+                      onSelected: vm.isLoading
+                          ? null
+                          : (_) => _selectChip(null),
+                    ),
+                  ),
+                  ...vm.genres.map(
+                    (genre) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilterChip(
+                        label: Text(genre.name),
+                        selected:
+                            vm.selectedGenreIds?.contains(genre.id) ?? false,
+                        onSelected: vm.isLoading
+                            ? null
+                            : (selected) =>
+                                  _selectChip(selected ? [genre.id] : null),
+                      ),
+                    ),
+                  ),
+                ],
               ),
+            ),
+          if (vm.isLoading && movies.isNotEmpty)
+            const LinearProgressIndicator(),
+          if (vm.status == MovieLoadStatus.error && movies.isNotEmpty)
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: Text('최근에 불러온 목록을 표시하고 있어요.'),
+            ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => context.read<MovieListViewModel>().load(),
+              notificationPredicate: (notification) =>
+                  !vm.isLoading && notification.depth == 0,
+              child: content,
             ),
           ),
         ],
       ),
-      body: FutureBuilder<_MovieListInitialData>(
-        future: _initialDataFuture,
-        builder: (context, snapshot) {
-          final selectedGenres =
-              _selectedGenresOverride ??
-              snapshot.data?.selectedGenres ??
-              widget.selectedGenres;
-          final sortOption =
-              _sortOptionOverride ??
-              snapshot.data?.sortOption ??
-              MovieSortOption.latest;
-
-          return Column(
-            children: [
-              _MovieListToolbar(
-                selectedCount: selectedGenres.length,
-                sortOption: sortOption,
-                onSortSelected: _selectSortOption,
-                onFilterPressed: () => _openGenreFilter(selectedGenres),
-              ),
-              Expanded(
-                child: _buildMovieContent(
-                  snapshot: snapshot,
-                  selectedGenres: selectedGenres,
-                ),
-              ),
-            ],
-          );
-        },
-      ),
     );
   }
 
-  Widget _buildMovieContent({
-    required AsyncSnapshot<_MovieListInitialData> snapshot,
-    required Set<String> selectedGenres,
-  }) {
-    if (snapshot.connectionState == ConnectionState.waiting &&
-        !snapshot.hasData) {
-      return const MovieListLoading();
-    }
-    if (snapshot.hasError) {
-      return MovieListError(onRetry: _retry);
-    }
-
-    final data = snapshot.data!;
-    final sortOption = _sortOptionOverride ?? data.sortOption;
-    final movies = _visibleMovies(
-      movies: data.movies,
-      selectedGenres: selectedGenres,
-      sortOption: sortOption,
+  void _selectChip(List<int>? ids) {
+    final uri = Uri(
+      path: '/movies',
+      queryParameters: ids == null
+          ? null
+          : {'genre': ids.map((id) => '$id').toList()},
     );
-
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: movies.isEmpty
-          ? const MovieListEmpty()
-          : MovieGrid(movies: movies),
-    );
+    context.go(uri.toString());
+    context.read<MovieListViewModel>().selectGenres(ids);
   }
-}
-
-class _MovieListInitialData {
-  const _MovieListInitialData({
-    required this.movies,
-    required this.selectedGenres,
-    required this.sortOption,
-  });
-
-  final List<Movie> movies;
-  final Set<String> selectedGenres;
-  final MovieSortOption sortOption;
 }
 
 class _MovieListToolbar extends StatelessWidget {
@@ -267,7 +204,7 @@ class _MovieListToolbar extends StatelessWidget {
   final int selectedCount;
   final MovieSortOption sortOption;
   final ValueChanged<MovieSortOption> onSortSelected;
-  final VoidCallback onFilterPressed;
+  final VoidCallback? onFilterPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -319,8 +256,8 @@ class _MovieListToolbar extends StatelessWidget {
 class _GenreFilterSheet extends StatefulWidget {
   const _GenreFilterSheet({required this.genres, required this.selectedGenres});
 
-  final List<String> genres;
-  final Set<String> selectedGenres;
+  final List<TmdbGenreDto> genres;
+  final Set<int> selectedGenres;
 
   @override
   State<_GenreFilterSheet> createState() => _GenreFilterSheetState();
@@ -333,7 +270,7 @@ class _GenreFilterSheetState extends State<_GenreFilterSheet> {
 
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
-  late final Set<String> _draftGenres = {...widget.selectedGenres};
+  late final Set<int> _draftGenres = {...widget.selectedGenres};
 
   @override
   void dispose() {
@@ -413,16 +350,19 @@ class _GenreFilterSheetState extends State<_GenreFilterSheet> {
                 itemBuilder: (context, index) {
                   final genre = widget.genres[index];
                   return CheckboxListTile(
-                    key: ValueKey('genre-checkbox-$genre'),
-                    value: _draftGenres.contains(genre),
+                    key: ValueKey('genre-checkbox-${genre.id}'),
+                    value: _draftGenres.contains(genre.id),
                     controlAffinity: ListTileControlAffinity.leading,
                     visualDensity: const VisualDensity(vertical: -3),
-                    title: Text(genre, style: const TextStyle(fontSize: 14)),
+                    title: Text(
+                      genre.name,
+                      style: const TextStyle(fontSize: 14),
+                    ),
                     onChanged: (checked) {
                       setState(() {
                         checked == true
-                            ? _draftGenres.add(genre)
-                            : _draftGenres.remove(genre);
+                            ? _draftGenres.add(genre.id)
+                            : _draftGenres.remove(genre.id);
                       });
                     },
                   );
