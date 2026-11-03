@@ -9,6 +9,9 @@ import '../view_models/movie_home_view_model.dart';
 import '../view_models/movie_list_view_model.dart';
 import '../screens/tmdb_detail_loader.dart';
 import '../profile_screen.dart';
+import '../screens/my_ratings_screen.dart';
+import '../services/rating_api_service.dart';
+import '../view_models/my_ratings_view_model.dart';
 import '../screens/home_screen.dart';
 import '../screens/main_screen.dart';
 import '../screens/movie_detail_screen.dart';
@@ -83,6 +86,16 @@ abstract final class AppRouter {
               ],
             ),
           ],
+        ),
+        GoRoute(
+          path: '/my/ratings',
+          builder: (context, state) => ChangeNotifierProvider(
+            create: (context) => MyRatingsViewModel(
+              context.read<RatingApiService>(),
+              tmdbService ?? context.read<TmdbMovieService>(),
+            )..load(),
+            child: const MyRatingsScreen(),
+          ),
         ),
         GoRoute(
           path: '/movies/:movieId',
