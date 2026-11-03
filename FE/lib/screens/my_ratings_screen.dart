@@ -32,7 +32,10 @@ class MyRatingsScreen extends StatelessWidget {
             ),
             Expanded(
               child: switch (vm.status) {
-                MyRatingsStatus.idle || MyRatingsStatus.loading => const Center(
+                MyRatingsStatus.idle => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+                MyRatingsStatus.loading when vm.ratings.isEmpty => const Center(
                   child: CircularProgressIndicator(),
                 ),
                 MyRatingsStatus.empty => _Message(
@@ -45,6 +48,7 @@ class MyRatingsScreen extends StatelessWidget {
                   message: vm.errorMessage!,
                   onRetry: vm.load,
                 ),
+                MyRatingsStatus.loading ||
                 MyRatingsStatus.success => RefreshIndicator(
                   onRefresh: vm.load,
                   child: ListView.separated(

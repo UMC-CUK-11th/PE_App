@@ -67,6 +67,9 @@ abstract final class AppRouter {
                         .whereType<int>()
                         .toList();
                     return ChangeNotifierProvider(
+                      key: ValueKey<String>(
+                        genres == null ? 'saved' : genres.join(','),
+                      ),
                       create: (context) => MovieListViewModel(
                         tmdbService ?? context.read<TmdbMovieService>(),
                         preferences: movieListPreferences,
@@ -103,7 +106,7 @@ abstract final class AppRouter {
             final id = int.tryParse(state.pathParameters['movieId'] ?? '');
             if (id == null) return const _MovieNotFoundScreen();
             final movie = state.extra;
-            if (movie is Movie && movie.id == id) {
+            if (movie is Movie && movie.id == id && movie.durationMinutes > 0) {
               return MovieDetailScreen(movie: movie);
             }
             return TmdbDetailLoader(

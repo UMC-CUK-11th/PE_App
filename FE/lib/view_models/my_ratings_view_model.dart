@@ -13,6 +13,7 @@ class MyRatingsViewModel extends ChangeNotifier {
   static const memberId = 1; // 학습용 공개 회원. 로그인한 사용자가 아닙니다.
   final RatingApiService _ratings;
   final TmdbMovieService _movies;
+  final CancelToken _cancelToken = CancelToken();
   MyRatingsStatus status = MyRatingsStatus.idle;
   List<RatingDto> ratings = const [];
   final Map<int, TmdbMovieDto> moviesById = {};
@@ -32,17 +33,27 @@ class MyRatingsViewModel extends ChangeNotifier {
       final items = await _ratings.fetchMyRatings(memberId);
       if (_disposed || version != _version) return;
       // 중복 영화는 한 번만 조회하고, 한 영화의 실패가 평점 전체를 지우지 않도록 합니다.
-      await Future.wait(
-        items.map((r) => r.movieId).toSet().map((id) async {
-          if (moviesById.containsKey(id)) return;
-          try {
-            final movie = await _movies.fetchMovieDetail(id);
-            if (!_disposed && version == _version) moviesById[id] = movie;
-          } catch (_) {
-            if (!_disposed && version == _version) failedMovieIds.add(id);
-          }
-        }),
-      );
+      final missingIds = items
+          .map((r) => r.movieId)
+          .toSet()
+          .where((id) => !moviesById.containsKey(id))
+          .toList();
+      for (var start = 0; start < missingIds.length; start += 5) {
+        if (_disposed || version != _version) return;
+        await Future.wait(
+          missingIds.skip(start).take(5).map((id) async {
+            try {
+              final movie = await _movies.fetchMovieDetail(
+                id,
+                cancelToken: _cancelToken,
+              );
+              if (!_disposed && version == _version) moviesById[id] = movie;
+            } catch (_) {
+              if (!_disposed && version == _version) failedMovieIds.add(id);
+            }
+          }),
+        );
+      }
       if (_disposed || version != _version) return;
       ratings = List.unmodifiable(items);
       status = items.isEmpty ? MyRatingsStatus.empty : MyRatingsStatus.success;
@@ -61,6 +72,7 @@ class MyRatingsViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _cancelToken.cancel();
     _version++;
     super.dispose();
   }

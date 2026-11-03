@@ -56,5 +56,8 @@ class TmdbMovieService {
     return TmdbMovieDto.fromJson(response.data!);
   }
 
-  Future<TmdbMovieDto> fetchMovieDetail(int movieId) => fetchDetail(movieId);
+  Future<TmdbMovieDto> fetchMovieDetail(
+    int movieId, {
+    CancelToken? cancelToken,
+  }) => fetchDetail(movieId, cancelToken: cancelToken);
 }

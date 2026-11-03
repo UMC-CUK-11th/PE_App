@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import 'package:movielog/sign_up_screen.dart';
 import 'package:movielog/screens/my_ratings_screen.dart';
 import 'package:movielog/services/member_check_service.dart';
@@ -14,8 +15,42 @@ import 'package:movielog/view_models/my_ratings_view_model.dart';
 import 'package:movielog/widgets/movielog_button.dart';
 import 'package:movielog/theme/app_theme.dart';
 
-void main() =>
-    runApp(MaterialApp(theme: AppTheme.light, home: const Preview()));
+void main() => runApp(const PreviewApp());
+
+class PreviewApp extends StatefulWidget {
+  const PreviewApp({super.key});
+  @override
+  State<PreviewApp> createState() => _PreviewAppState();
+}
+
+class _PreviewAppState extends State<PreviewApp> {
+  late final _router = GoRouter(
+    routes: [
+      GoRoute(path: '/', builder: (_, _) => const Preview()),
+      GoRoute(
+        path: '/home',
+        builder: (context, _) => Scaffold(
+          appBar: AppBar(title: const Text('프리뷰 · 폼 검증 완료')),
+          body: Center(
+            child: FilledButton(
+              onPressed: () => context.go('/'),
+              child: const Text('프리뷰로 돌아가기'),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+  @override
+  void dispose() {
+    _router.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      MaterialApp.router(theme: AppTheme.light, routerConfig: _router);
+}
 
 class _Checks extends MemberCheckService {
   _Checks() : super(Dio());

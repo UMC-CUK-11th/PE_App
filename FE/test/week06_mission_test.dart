@@ -52,7 +52,10 @@ class MoviesService extends TmdbMovieService {
   int calls = 0;
   bool fail = false;
   @override
-  Future<TmdbMovieDto> fetchMovieDetail(int id) async {
+  Future<TmdbMovieDto> fetchMovieDetail(
+    int id, {
+    CancelToken? cancelToken,
+  }) async {
     calls++;
     if (fail) throw StateError('detail failed');
     return TmdbMovieDto(id: id, title: '테스트 영화');

@@ -55,7 +55,9 @@ class SignUpViewModel extends ChangeNotifier {
   bool get canCheckEmail => _canCheck(_email, validateEmail(_email.current));
 
   void _changed(_CheckField field, String value, String label) {
-    field.current = value.trim();
+    final current = value.trim();
+    if (current == field.current) return;
+    field.current = current;
     field.version++; // 입력이 바뀌면 이전 요청의 늦은 응답은 무효입니다.
     final duplicated =
         field.current.isNotEmpty && field.current == field.duplicated;
