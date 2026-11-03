@@ -21,6 +21,7 @@ migrate_working_dir/
 
 # Local editor settings
 .vscode/
+**/devtools_options.yaml
 
 # Environment variables and local secrets
 .env
