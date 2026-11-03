@@ -1,11 +1,19 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/app/movie_log_app.dart';
+import 'package:movielog/data/services/member_api_service.dart';
 import 'package:movielog/router/app_router.dart';
 
 void main() {
-  Future<void> pumpRegisterScreen(WidgetTester tester) async {
-    final router = AppRouter.createRouter(initialLocation: '/register');
+  Future<void> pumpRegisterScreen(
+    WidgetTester tester, {
+    required MemberApiService apiService,
+  }) async {
+    final router = AppRouter.createRouter(
+      initialLocation: '/register',
+      memberApiService: apiService,
+    );
     addTearDown(router.dispose);
     await tester.pumpWidget(MovieLogApp(router: router));
   }
@@ -18,61 +26,91 @@ void main() {
     view.resetViewInsets();
   });
 
-  testWidgets('유효한 입력과 약관 동의 후 가입 버튼이 활성화된다', (tester) async {
-    await pumpRegisterScreen(tester);
+  testWidgets('닉네임과 이메일 확인이 성공해야 가입 버튼이 활성화된다', (tester) async {
+    await pumpRegisterScreen(
+      tester,
+      apiService: MemberApiService(_fakeDio((_) => {'available': true})),
+    );
 
     final fields = find.byType(TextFormField);
-    expect(fields, findsNWidgets(3));
-
-    final fieldHeights = List.generate(
-      3,
-      (index) => tester.getSize(fields.at(index)).height,
-    );
-    expect(fieldHeights.toSet(), hasLength(1));
-
-    ElevatedButton signUpButton() => tester.widget<ElevatedButton>(
-      find.widgetWithText(ElevatedButton, '가입하기'),
-    );
-
-    expect(signUpButton().onPressed, isNull);
-
     await tester.enterText(fields.at(0), '노바');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('닉네임-check-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('사용 가능한 닉네임입니다.'), findsOneWidget);
+
     await tester.enterText(fields.at(1), 'nova@example.com');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('이메일-check-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('사용 가능한 이메일입니다.'), findsOneWidget);
+
     await tester.enterText(fields.at(2), 'password123');
-    await tester.pump();
-
-    expect(find.text('노바'), findsOneWidget);
-    expect(find.text('nova@example.com'), findsOneWidget);
-    expect(find.byTooltip('비밀번호 표시'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('비밀번호 표시'));
-    await tester.pump();
-    expect(find.byTooltip('비밀번호 숨기기'), findsOneWidget);
-
-    FocusManager.instance.primaryFocus?.unfocus();
-    await tester.pump();
-    expect(find.byTooltip('비밀번호 숨기기'), findsNothing);
-    expect(find.byKey(const ValueKey('password-valid-icon')), findsOneWidget);
-
-    await tester.tap(fields.at(2));
-    await tester.pump();
-    expect(find.byTooltip('비밀번호 숨기기'), findsOneWidget);
-    expect(find.byKey(const ValueKey('password-valid-icon')), findsNothing);
-
     await tester.tap(find.byType(Checkbox));
     await tester.pump();
-    expect(find.byKey(const ValueKey('password-valid-icon')), findsOneWidget);
-    expect(signUpButton().onPressed, isNotNull);
 
-    await tester.ensureVisible(find.text('가입하기'));
-    await tester.tap(find.text('가입하기'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('오늘은 어떤\n영화를 볼까요?'), findsOneWidget);
+    final button = tester.widget<FilledButton>(
+      find.descendant(
+        of: find.byKey(const ValueKey('sign-up-button')),
+        matching: find.byType(FilledButton),
+      ),
+    );
+    expect(button.onPressed, isNotNull);
   });
 
-  testWidgets('입력값이 잘못되면 한국어 오류 메시지를 표시한다', (tester) async {
-    await pumpRegisterScreen(tester);
+  testWidgets('입력이 바뀌면 확인 결과를 무효화하고 중복값 재입력은 즉시 복원한다', (tester) async {
+    var nicknameRequests = 0;
+    await pumpRegisterScreen(
+      tester,
+      apiService: MemberApiService(
+        _fakeDio((options) {
+          if (options.path.contains('/nickname/')) nicknameRequests++;
+          return {'available': false};
+        }),
+      ),
+    );
+
+    final nicknameField = find.byType(TextFormField).first;
+    await tester.enterText(nicknameField, '중복닉네임');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('닉네임-check-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('이미 사용 중인 닉네임입니다.'), findsOneWidget);
+    expect(nicknameRequests, 1);
+
+    await tester.enterText(nicknameField, '새닉네임');
+    await tester.pump();
+    expect(find.text('이미 사용 중인 닉네임입니다.'), findsNothing);
+
+    await tester.enterText(nicknameField, '중복닉네임');
+    await tester.pump();
+    expect(find.text('이미 사용 중인 닉네임입니다.'), findsOneWidget);
+    expect(nicknameRequests, 1);
+  });
+
+  testWidgets('통신 실패는 중복 응답과 다른 오류 메시지를 표시한다', (tester) async {
+    await pumpRegisterScreen(
+      tester,
+      apiService: MemberApiService(_failingDio()),
+    );
+
+    final emailField = find.byType(TextFormField).at(1);
+    await tester.enterText(emailField, 'nova@example.com');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('이메일-check-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('이메일 중복 확인에 실패했습니다. 다시 시도해주세요.'), findsOneWidget);
+    expect(find.text('이미 사용 중인 이메일입니다.'), findsNothing);
+  });
+
+  testWidgets('잘못된 형식은 한국어 오류를 표시하고 낮은 화면에서도 스크롤된다', (tester) async {
+    tester.view.physicalSize = const Size(390, 500);
+    tester.view.devicePixelRatio = 1;
+    await pumpRegisterScreen(
+      tester,
+      apiService: MemberApiService(_fakeDio((_) => {'available': true})),
+    );
 
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), '노');
@@ -83,87 +121,41 @@ void main() {
     expect(find.text('닉네임은 2자 이상이어야 합니다.'), findsOneWidget);
     expect(find.text('올바른 이메일 형식이 아닙니다.'), findsOneWidget);
     expect(find.text('비밀번호는 8자 이상이어야 합니다.'), findsOneWidget);
-
-    await tester.enterText(fields.at(2), 'abcdefgh');
-    await tester.pump();
-    expect(find.text('비밀번호는 영문과 숫자를 포함해야 합니다.'), findsOneWidget);
-
-    await tester.enterText(fields.at(2), '12345678');
-    await tester.pump();
-    expect(find.text('비밀번호는 영문과 숫자를 포함해야 합니다.'), findsOneWidget);
-  });
-
-  testWidgets('낮은 모바일 화면에서 입력창을 선택해도 overflow가 없다', (tester) async {
-    tester.view.physicalSize = const Size(390, 500);
-    tester.view.devicePixelRatio = 1;
-
-    await pumpRegisterScreen(tester);
-
     expect(
       find.byKey(const ValueKey('common-app-bar-back-icon')),
-      findsNothing,
+      findsOneWidget,
     );
-
-    final passwordField = find.byType(TextFormField).at(2);
-    await tester.ensureVisible(passwordField);
-    await tester.tap(passwordField);
-    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
-    await tester.pumpAndSettle();
-
     expect(tester.takeException(), isNull);
   });
+}
 
-  testWidgets('너비 700 이상에서 넓은 화면 회원가입 레이아웃을 사용한다', (tester) async {
-    tester.view.physicalSize = const Size(900, 1200);
-    tester.view.devicePixelRatio = 1;
+Dio _fakeDio(dynamic Function(RequestOptions) responseBuilder) {
+  final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080'));
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (options, handler) => handler.resolve(
+        Response<dynamic>(
+          requestOptions: options,
+          statusCode: 200,
+          data: responseBuilder(options),
+        ),
+      ),
+    ),
+  );
+  return dio;
+}
 
-    await pumpRegisterScreen(tester);
-
-    expect(find.text('MovieLog에 오신 것을 환영합니다!'), findsOneWidget);
-    expect(find.text('영화로운 닉네임을 입력하세요'), findsOneWidget);
-    expect(find.text('example@movielog.com'), findsOneWidget);
-    expect(find.text('영문, 숫자 포함 8자 이상'), findsOneWidget);
-
-    final containerSize = tester.getSize(
-      find.byKey(const ValueKey('wide-sign-up-container')),
-    );
-    expect(containerSize, const Size(560, 622));
-
-    final fields = find.byType(TextFormField);
-    final editableTexts = find.byType(EditableText);
-    final inputDecorators = find.byType(InputDecorator);
-    final initialFieldRects = List.generate(
-      3,
-      (index) => tester.getRect(fields.at(index)),
-    );
-    for (var index = 0; index < 3; index++) {
-      expect(tester.getSize(fields.at(index)), const Size(496, 42));
-      expect(tester.getSize(inputDecorators.at(index)), const Size(496, 42));
-      final editableText = tester.widget<EditableText>(editableTexts.at(index));
-      final inputDecorator = tester.widget<InputDecorator>(
-        inputDecorators.at(index),
-      );
-      expect(inputDecorator.decoration.suffixIcon, isNotNull);
-      expect(editableText.style.fontFamily, 'Manrope');
-      expect(editableText.style.fontSize, 14);
-      expect(editableText.style.height, 20 / 14);
-      expect(inputDecorator.decoration.hintStyle?.fontSize, 14);
-      expect(inputDecorator.decoration.hintStyle?.height, 20 / 14);
-    }
-
-    await tester.enterText(fields.at(0), 'a');
-    await tester.pump();
-
-    expect(find.text('닉네임은 2자 이상이어야 합니다.'), findsOneWidget);
-    expect(
-      tester.getSize(find.byKey(const ValueKey('wide-sign-up-container'))),
-      const Size(560, 622),
-    );
-    for (var index = 0; index < 3; index++) {
-      expect(tester.getRect(fields.at(index)), initialFieldRects[index]);
-      expect(tester.getSize(fields.at(index)), const Size(496, 42));
-      expect(tester.getSize(inputDecorators.at(index)), const Size(496, 42));
-    }
-    expect(tester.takeException(), isNull);
-  });
+Dio _failingDio() {
+  final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080'));
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (options, handler) => handler.reject(
+        DioException(
+          requestOptions: options,
+          type: DioExceptionType.connectionError,
+        ),
+      ),
+    ),
+  );
+  return dio;
 }

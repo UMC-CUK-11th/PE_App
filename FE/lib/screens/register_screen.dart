@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../data/services/member_api_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
+import '../widgets/app_button.dart';
 import '../widgets/common_app_bar.dart';
 import '../widgets/movie_log_text_form_field.dart';
 
+enum AvailabilityState { idle, loading, available, duplicate, networkError }
+
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  const RegisterScreen({this.apiService, super.key});
+
+  final MemberApiService? apiService;
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -15,20 +21,31 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
-
   final _nicknameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-
   final _nicknameFocusNode = FocusNode();
   final _emailFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
+  final _nicknameFieldKey = GlobalKey<FormFieldState<String>>();
+  final _emailFieldKey = GlobalKey<FormFieldState<String>>();
+  final _duplicateNicknames = <String>{};
+  final _duplicateEmails = <String>{};
 
+  late final MemberApiService _apiService;
+  AvailabilityState _nicknameState = AvailabilityState.idle;
+  AvailabilityState _emailState = AvailabilityState.idle;
   bool _nicknameTouched = false;
   bool _emailTouched = false;
   bool _passwordTouched = false;
   bool _agreedToTerms = false;
   bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _apiService = widget.apiService ?? MemberApiService.fromEnvironment();
+  }
 
   @override
   void dispose() {
@@ -41,7 +58,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  String? _validateNickname(String? value) {
+  String? _validateNicknameFormat(String? value) {
     final nickname = value?.trim() ?? '';
     if (nickname.isEmpty) return '닉네임을 입력해주세요.';
     if (nickname.length < 2) return '닉네임은 2자 이상이어야 합니다.';
@@ -49,150 +66,303 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
-  String? _validateEmail(String? value) {
+  String? _validateEmailFormat(String? value) {
     final email = value?.trim() ?? '';
     if (email.isEmpty) return '이메일을 입력해주세요.';
-
-    final emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
-    if (!emailPattern.hasMatch(email)) return '올바른 이메일 형식이 아닙니다.';
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
+      return '올바른 이메일 형식이 아닙니다.';
+    }
     return null;
+  }
+
+  String? _validateNickname(String? value) {
+    final formatError = _validateNicknameFormat(value);
+    if (formatError != null) return formatError;
+    return switch (_nicknameState) {
+      AvailabilityState.duplicate => '이미 사용 중인 닉네임입니다.',
+      AvailabilityState.networkError => '닉네임 중복 확인에 실패했습니다. 다시 시도해주세요.',
+      _ => null,
+    };
+  }
+
+  String? _validateEmail(String? value) {
+    final formatError = _validateEmailFormat(value);
+    if (formatError != null) return formatError;
+    return switch (_emailState) {
+      AvailabilityState.duplicate => '이미 사용 중인 이메일입니다.',
+      AvailabilityState.networkError => '이메일 중복 확인에 실패했습니다. 다시 시도해주세요.',
+      _ => null,
+    };
   }
 
   String? _validatePassword(String? value) {
     final password = value ?? '';
     if (password.isEmpty) return '비밀번호를 입력해주세요.';
     if (password.length < 8) return '비밀번호는 8자 이상이어야 합니다.';
-    final hasEnglishLetter = RegExp(r'[A-Za-z]').hasMatch(password);
-    final hasNumber = RegExp(r'[0-9]').hasMatch(password);
-    if (!hasEnglishLetter || !hasNumber) {
+    if (!RegExp(r'[A-Za-z]').hasMatch(password) ||
+        !RegExp(r'[0-9]').hasMatch(password)) {
       return '비밀번호는 영문과 숫자를 포함해야 합니다.';
     }
     return null;
   }
 
-  bool get _isNicknameValid =>
-      _validateNickname(_nicknameController.text) == null;
-  bool get _isEmailValid => _validateEmail(_emailController.text) == null;
+  bool get _isNicknameFormatValid =>
+      _validateNicknameFormat(_nicknameController.text) == null;
+  bool get _isEmailFormatValid =>
+      _validateEmailFormat(_emailController.text) == null;
   bool get _isPasswordValid =>
       _validatePassword(_passwordController.text) == null;
-
   bool get _canSubmit =>
-      _isNicknameValid && _isEmailValid && _isPasswordValid && _agreedToTerms;
+      _nicknameState == AvailabilityState.available &&
+      _emailState == AvailabilityState.available &&
+      _isPasswordValid &&
+      _agreedToTerms;
 
-  void _submit() {
-    final isValid = _formKey.currentState?.validate() ?? false;
-    if (!isValid || !_agreedToTerms) return;
-
-    FocusScope.of(context).unfocus();
-    debugPrint('회원가입이 완료되었습니다.');
-    context.go('/home');
+  void _onNicknameChanged(String value) {
+    final nickname = value.trim();
+    setState(() {
+      _nicknameTouched = true;
+      _nicknameState = _duplicateNicknames.contains(nickname)
+          ? AvailabilityState.duplicate
+          : AvailabilityState.idle;
+    });
+    _nicknameFieldKey.currentState?.validate();
   }
 
-  void _handleAgreementChanged(bool? value) {
+  void _onEmailChanged(String value) {
+    final email = value.trim().toLowerCase();
+    setState(() {
+      _emailTouched = true;
+      _emailState = _duplicateEmails.contains(email)
+          ? AvailabilityState.duplicate
+          : AvailabilityState.idle;
+    });
+    _emailFieldKey.currentState?.validate();
+  }
+
+  Future<void> _checkNickname() async {
+    final nickname = _nicknameController.text.trim();
+    if (_validateNicknameFormat(nickname) != null) {
+      setState(() => _nicknameTouched = true);
+      _nicknameFieldKey.currentState?.validate();
+      return;
+    }
+    setState(() => _nicknameState = AvailabilityState.loading);
+    try {
+      final available = await _apiService.isNicknameAvailable(nickname);
+      if (!mounted || _nicknameController.text.trim() != nickname) return;
+      setState(() {
+        _nicknameState = available
+            ? AvailabilityState.available
+            : AvailabilityState.duplicate;
+        if (!available) _duplicateNicknames.add(nickname);
+      });
+    } on Object {
+      if (!mounted || _nicknameController.text.trim() != nickname) return;
+      setState(() => _nicknameState = AvailabilityState.networkError);
+    }
+    _nicknameFieldKey.currentState?.validate();
+  }
+
+  Future<void> _checkEmail() async {
+    final email = _emailController.text.trim().toLowerCase();
+    if (_validateEmailFormat(email) != null) {
+      setState(() => _emailTouched = true);
+      _emailFieldKey.currentState?.validate();
+      return;
+    }
+    setState(() => _emailState = AvailabilityState.loading);
+    try {
+      final available = await _apiService.isEmailAvailable(email);
+      if (!mounted || _emailController.text.trim().toLowerCase() != email) {
+        return;
+      }
+      setState(() {
+        _emailState = available
+            ? AvailabilityState.available
+            : AvailabilityState.duplicate;
+        if (!available) _duplicateEmails.add(email);
+      });
+    } on Object {
+      if (!mounted || _emailController.text.trim().toLowerCase() != email) {
+        return;
+      }
+      setState(() => _emailState = AvailabilityState.networkError);
+    }
+    _emailFieldKey.currentState?.validate();
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false) || !_canSubmit) return;
     FocusScope.of(context).unfocus();
-    setState(() => _agreedToTerms = value ?? false);
+    context.go('/home');
   }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth >= 700) {
-          return _buildWideLayout();
-        }
-        return _buildMobileLayout();
-      },
-    );
-  }
-
-  Widget _buildMobileLayout() {
     return Scaffold(
       appBar: CommonAppBar(
         title: '회원가입',
         centerTitle: true,
-        titleStyle: AppTextStyles.signUpAppBarTitle,
+        titleStyle: AppTextStyles.signUpAppBarTitle.copyWith(fontSize: 20),
+        onBack: () => context.canPop() ? context.pop() : context.go('/start'),
       ),
       body: SafeArea(
         top: false,
         child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          builder: (context, constraints) => SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+            child: Center(
               child: ConstrainedBox(
                 constraints: BoxConstraints(
+                  maxWidth: 560,
                   minHeight: (constraints.maxHeight - 48).clamp(
                     0,
                     double.infinity,
                   ),
                 ),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const _SignUpHeader(isWide: false),
-                          const SizedBox(height: 32),
-                          _buildFields(isWide: false),
-                        ],
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 32, bottom: 16),
-                        child: _SignUpActions(
-                          isWide: false,
-                          agreedToTerms: _agreedToTerms,
-                          canSubmit: _canSubmit,
-                          onAgreementChanged: _handleAgreementChanged,
-                          onSubmit: _submit,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWideLayout() {
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: DecoratedBox(
-                key: const ValueKey('wide-sign-up-container'),
-                decoration: BoxDecoration(
-                  color: AppColors.warmWhite,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
+                child: IntrinsicHeight(
                   child: Form(
                     key: _formKey,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const _SignUpHeader(isWide: true),
+                        const Text(
+                          '환영합니다!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          '간단한 정보만 입력하고 시작해보세요.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: AppColors.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 34),
+                        _AvailabilityField(
+                          label: '닉네임',
+                          hintText: '닉네임을 입력해주세요',
+                          controller: _nicknameController,
+                          formFieldKey: _nicknameFieldKey,
+                          focusNode: _nicknameFocusNode,
+                          validator: _validateNickname,
+                          onChanged: _onNicknameChanged,
+                          onFieldSubmitted: (_) =>
+                              _emailFocusNode.requestFocus(),
+                          keyboardType: TextInputType.name,
+                          touched: _nicknameTouched,
+                          formatValid: _isNicknameFormatValid,
+                          state: _nicknameState,
+                          availableMessage: '사용 가능한 닉네임입니다.',
+                          loadingMessage: '닉네임 사용 가능 여부를 확인 중입니다.',
+                          onCheck: _checkNickname,
+                        ),
+                        const SizedBox(height: 16),
+                        _AvailabilityField(
+                          label: '이메일',
+                          hintText: '이메일 주소를 입력해주세요',
+                          controller: _emailController,
+                          formFieldKey: _emailFieldKey,
+                          focusNode: _emailFocusNode,
+                          validator: _validateEmail,
+                          onChanged: _onEmailChanged,
+                          onFieldSubmitted: (_) =>
+                              _passwordFocusNode.requestFocus(),
+                          keyboardType: TextInputType.emailAddress,
+                          touched: _emailTouched,
+                          formatValid: _isEmailFormatValid,
+                          state: _emailState,
+                          availableMessage: '사용 가능한 이메일입니다.',
+                          loadingMessage: '이메일 사용 가능 여부를 확인 중입니다.',
+                          onCheck: _checkEmail,
+                        ),
+                        const SizedBox(height: 16),
+                        MovieLogTextFormField(
+                          label: '비밀번호',
+                          hintText: '영문, 숫자 포함 8자 이상',
+                          controller: _passwordController,
+                          focusNode: _passwordFocusNode,
+                          validator: _validatePassword,
+                          onChanged: (_) =>
+                              setState(() => _passwordTouched = true),
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) =>
+                              FocusScope.of(context).unfocus(),
+                          isValid: _passwordTouched && _isPasswordValid,
+                          showError: _passwordTouched && !_isPasswordValid,
+                          obscureText: _obscurePassword,
+                          onToggleObscure: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
+                        ),
+                        const Spacer(),
+                        const SizedBox(height: 32),
+                        Row(
+                          children: [
+                            SizedBox.square(
+                              dimension: 26,
+                              child: Checkbox(
+                                value: _agreedToTerms,
+                                onChanged: (value) => setState(
+                                  () => _agreedToTerms = value ?? false,
+                                ),
+                                checkColor: AppColors.white,
+                                fillColor: WidgetStateProperty.resolveWith(
+                                  (states) =>
+                                      states.contains(WidgetState.selected)
+                                      ? AppColors.violet
+                                      : AppColors.white,
+                                ),
+                                side: const BorderSide(color: AppColors.gray),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Text(
+                              '필수 약관에 동의합니다',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                        AppButton(
+                          key: const ValueKey('sign-up-button'),
+                          label: '가입하기',
+                          onPressed: _canSubmit ? _submit : null,
+                        ),
                         const SizedBox(height: 40),
-                        _buildFields(isWide: true),
-                        const SizedBox(height: 12),
-                        _SignUpActions(
-                          isWide: true,
-                          agreedToTerms: _agreedToTerms,
-                          canSubmit: _canSubmit,
-                          onAgreementChanged: _handleAgreementChanged,
-                          onSubmit: _submit,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text(
+                              '이미 계정이 있나요?',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: AppColors.onSurfaceVariant,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () {},
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppColors.violet,
+                                padding: const EdgeInsets.only(left: 4),
+                                minimumSize: Size.zero,
+                              ),
+                              child: const Text('로그인'),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -205,210 +375,107 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
     );
   }
-
-  Widget _buildFields({required bool isWide}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        MovieLogTextFormField(
-          label: '닉네임',
-          hintText: isWide ? '영화로운 닉네임을 입력하세요' : '닉네임을 입력해주세요',
-          controller: _nicknameController,
-          focusNode: _nicknameFocusNode,
-          validator: _validateNickname,
-          onChanged: (_) {
-            setState(() => _nicknameTouched = true);
-          },
-          onFieldSubmitted: (_) => _emailFocusNode.requestFocus(),
-          textInputAction: TextInputAction.next,
-          keyboardType: TextInputType.name,
-          isCompact: isWide,
-          isValid: _nicknameTouched && _isNicknameValid,
-          showError: _nicknameTouched && !_isNicknameValid,
-          inputFontWeight: _nicknameTouched && _isNicknameValid
-              ? FontWeight.w500
-              : FontWeight.w400,
-          hintFontWeight: isWide ? FontWeight.w400 : FontWeight.w500,
-        ),
-        SizedBox(height: isWide ? 4 : 16),
-        MovieLogTextFormField(
-          label: isWide ? '이메일 주소' : '이메일',
-          hintText: isWide ? 'example@movielog.com' : '이메일 주소를 입력해주세요',
-          controller: _emailController,
-          focusNode: _emailFocusNode,
-          validator: _validateEmail,
-          onChanged: (_) {
-            setState(() => _emailTouched = true);
-          },
-          onFieldSubmitted: (_) => _passwordFocusNode.requestFocus(),
-          textInputAction: TextInputAction.next,
-          keyboardType: TextInputType.emailAddress,
-          isCompact: isWide,
-          isValid: _emailTouched && _isEmailValid,
-          showError: _emailTouched && !_isEmailValid,
-          hintFontWeight: isWide ? FontWeight.w400 : FontWeight.w500,
-        ),
-        SizedBox(height: isWide ? 4 : 16),
-        MovieLogTextFormField(
-          label: '비밀번호',
-          hintText: isWide ? '영문, 숫자 포함 8자 이상' : '비밀번호를 입력해주세요',
-          controller: _passwordController,
-          focusNode: _passwordFocusNode,
-          validator: _validatePassword,
-          onChanged: (_) {
-            setState(() => _passwordTouched = true);
-          },
-          onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
-          textInputAction: TextInputAction.done,
-          isCompact: isWide,
-          isValid: _passwordTouched && _isPasswordValid,
-          showError: _passwordTouched && !_isPasswordValid,
-          obscureText: _obscurePassword,
-          onToggleObscure: () {
-            setState(() => _obscurePassword = !_obscurePassword);
-          },
-        ),
-      ],
-    );
-  }
 }
 
-class _SignUpHeader extends StatelessWidget {
-  const _SignUpHeader({required this.isWide});
-
-  final bool isWide;
-
-  @override
-  Widget build(BuildContext context) {
-    if (isWide) {
-      return const Column(
-        children: [
-          Text(
-            '회원가입',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.signUpTitle,
-          ),
-          SizedBox(height: 8),
-          Text(
-            'MovieLog에 오신 것을 환영합니다!',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.signUpSubtitle,
-          ),
-        ],
-      );
-    }
-
-    return const Padding(
-      padding: EdgeInsets.only(bottom: 16),
-      child: Text(
-        '환영합니다!\n간단한 정보만 입력하고 시작해보세요.',
-        textAlign: TextAlign.center,
-        style: AppTextStyles.bodyMedium,
-      ),
-    );
-  }
-}
-
-class _SignUpActions extends StatelessWidget {
-  const _SignUpActions({
-    required this.isWide,
-    required this.agreedToTerms,
-    required this.canSubmit,
-    required this.onAgreementChanged,
-    required this.onSubmit,
+class _AvailabilityField extends StatelessWidget {
+  const _AvailabilityField({
+    required this.label,
+    required this.hintText,
+    required this.controller,
+    required this.formFieldKey,
+    required this.focusNode,
+    required this.validator,
+    required this.onChanged,
+    required this.onFieldSubmitted,
+    required this.keyboardType,
+    required this.touched,
+    required this.formatValid,
+    required this.state,
+    required this.availableMessage,
+    required this.loadingMessage,
+    required this.onCheck,
   });
 
-  final bool isWide;
-  final bool agreedToTerms;
-  final bool canSubmit;
-  final ValueChanged<bool?> onAgreementChanged;
-  final VoidCallback onSubmit;
+  final String label;
+  final String hintText;
+  final TextEditingController controller;
+  final Key formFieldKey;
+  final FocusNode focusNode;
+  final FormFieldValidator<String> validator;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<String> onFieldSubmitted;
+  final TextInputType keyboardType;
+  final bool touched;
+  final bool formatValid;
+  final AvailabilityState state;
+  final String availableMessage;
+  final String loadingMessage;
+  final VoidCallback onCheck;
 
   @override
   Widget build(BuildContext context) {
-    final compactStyle = isWide
-        ? AppTextStyles.fieldLabelCompact
-        : AppTextStyles.fieldLabel;
-
+    final hasStateError =
+        state == AvailabilityState.duplicate ||
+        state == AvailabilityState.networkError;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            SizedBox(
-              width: isWide ? 20 : 24,
-              height: isWide ? 20 : 24,
-              child: Checkbox(
-                value: agreedToTerms,
-                onChanged: onAgreementChanged,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-                checkColor: AppColors.white,
-                fillColor: WidgetStateProperty.resolveWith((states) {
-                  if (states.contains(WidgetState.selected)) {
-                    return AppColors.violet;
-                  }
-                  return AppColors.white;
-                }),
-                side: const BorderSide(color: AppColors.gray),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Flexible(child: Text('필수 약관에 동의합니다', style: compactStyle)),
-          ],
-        ),
-        SizedBox(height: isWide ? 32 : 24),
-        SizedBox(
-          height: 56,
-          child: ElevatedButton(
-            onPressed: canSubmit ? onSubmit : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.violet,
-              disabledBackgroundColor: AppColors.disabledButton,
-              foregroundColor: AppColors.white,
-              disabledForegroundColor: AppColors.white,
-              elevation: 1,
-              shadowColor: const Color(0x0D000000),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: Text(
-              '가입하기',
-              style: isWide
-                  ? AppTextStyles.buttonLabelCompact
-                  : AppTextStyles.buttonLabel,
-            ),
+        Text(
+          label,
+          style: AppTextStyles.fieldLabelCompact.copyWith(
+            fontWeight: FontWeight.w700,
           ),
         ),
-        const SizedBox(height: 40),
+        const SizedBox(height: 6),
         Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '이미 계정이 있나요?',
-              style: compactStyle.copyWith(color: AppColors.onSurfaceVariant),
-            ),
-            const SizedBox(width: 4),
-            TextButton(
-              onPressed: () => debugPrint('로그인 버튼을 눌렀습니다.'),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.violet,
-                padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            Expanded(
+              child: MovieLogTextFormField(
+                label: label,
+                formFieldKey: formFieldKey,
+                showLabel: false,
+                hintText: hintText,
+                controller: controller,
+                focusNode: focusNode,
+                validator: validator,
+                onChanged: onChanged,
+                onFieldSubmitted: onFieldSubmitted,
+                textInputAction: TextInputAction.next,
+                keyboardType: keyboardType,
+                isValid: state == AvailabilityState.available,
+                showError: touched && (!formatValid || hasStateError),
               ),
-              child: Text(
-                '로그인',
-                style: compactStyle.copyWith(color: AppColors.violet),
+            ),
+            const SizedBox(width: 20),
+            SizedBox(
+              width: 102,
+              child: AppButton(
+                key: ValueKey('$label-check-button'),
+                label: '중복 확인',
+                isLoading: state == AvailabilityState.loading,
+                onPressed: formatValid ? onCheck : null,
               ),
             ),
           ],
         ),
+        if (state == AvailabilityState.available ||
+            state == AvailabilityState.loading)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              state == AvailabilityState.available
+                  ? availableMessage
+                  : loadingMessage,
+              style: TextStyle(
+                color: state == AvailabilityState.available
+                    ? const Color(0xFF2E7D32)
+                    : const Color(0xFF1565C0),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
       ],
     );
   }

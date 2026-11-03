@@ -7,7 +7,12 @@ class MemberApiService {
   MemberApiService(this._dio);
 
   factory MemberApiService.fromEnvironment() {
-    final baseUrl = dotenv.env['MOVIE_API_BASE_URL']?.trim();
+    String? baseUrl;
+    try {
+      baseUrl = dotenv.maybeGet('MOVIE_API_BASE_URL')?.trim();
+    } on Object {
+      // Widget tests can build routes without loading an asset-backed .env.
+    }
     return MemberApiService(
       Dio(
         BaseOptions(
