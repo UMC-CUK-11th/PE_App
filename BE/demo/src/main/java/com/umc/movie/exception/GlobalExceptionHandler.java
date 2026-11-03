@@ -51,6 +51,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> missingParameter(MissingServletRequestParameterException error) {
         return response(400, "COMMON400", "필수 쿼리 파라미터를 입력해주세요.");
     }
+    /**
+     * 명시적인 HTTP 예외의 상태 코드를 보존한 공통 오류 응답을 만듭니다.
+     *
+     * @param error 응답 상태와 선택적인 사용자 안내를 가진 예외
+     * @return COMMON 상태 코드와 안내 문구; 안내가 없으면 기본 문구를 사용한 응답
+     */
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ApiResponse<Void>> status(ResponseStatusException error) {
         return response(error.getStatusCode().value(), "COMMON" + error.getStatusCode().value(),
@@ -60,6 +66,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> notFound(NoResourceFoundException error) {
         return response(404, "COMMON404", "요청 경로를 찾을 수 없습니다.");
     }
+    /**
+     * 저장 중 발생한 중복 키 위반을 회원 또는 평점의 409 오류로 변환합니다.
+     * MySQL 1062와 H2 SQLState 23505를 중복으로 판별하며, 그 외 무결성 오류는 500입니다.
+     * 가입 충돌 종류는 제약 이름으로 구분하고, 이름이 불명확하면 서비스 트랜잭션이
+     * 롤백된 뒤 요청 속성의 이메일과 닉네임으로 재조회합니다. DB 원문은 응답하지 않습니다.
+     *
+     * @param error SQL 원인과 제약 이름을 확인할 저장 예외
+     * @param request 가입 여부와 정규화된 가입 정보를 담은 요청
+     * @return 중복 종류별 409 공통 응답 또는 중복이 아닌 무결성 오류의 500 응답
+     */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> database(DataIntegrityViolationException error, HttpServletRequest request) {
         boolean unique = false;

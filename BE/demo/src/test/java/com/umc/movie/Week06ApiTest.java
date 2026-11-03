@@ -40,6 +40,16 @@ class Week06ApiTest {
         // test profile의 H2에서만 실행합니다. 기존 MySQL 데이터에는 접근하지 않습니다.
         ratings.deleteAll(); members.deleteAll();
     }
+    /**
+     * MockMvc로 요청을 보내 기대한 HTTP 상태를 확인합니다.
+     *
+     * @param method POST, PATCH, DELETE 또는 GET
+     * @param path 요청 경로
+     * @param body null이면 본문 없음, 문자열이면 원시 JSON, 그 외에는 JSON으로 직렬화할 값
+     * @param status 기대하는 HTTP 상태 코드
+     * @return 응답 JSON과 본문 부재를 추가 검사할 요청 결과
+     * @throws Exception 요청 실행 또는 JSON 직렬화가 실패한 경우
+     */
     MvcResult send(String method, String path, Object body, int status) throws Exception {
         var request = switch(method) {
             case "POST" -> post(path); case "PATCH" -> patch(path);
@@ -193,6 +203,13 @@ class Week06ApiTest {
         send("PATCH",path+"/"+id,Map.of("score",2,"comment",""),200);
         assertEquals("",tree(send("GET",path,null,200)).get(0).get("comment").asText());
     }
+    /**
+     * 두 가입 요청이 사전 중복 검사를 모두 통과하게 해 실제 H2 UNIQUE 충돌을 재현합니다.
+     * 201 한 건, 종류별 409 한 건과 저장 회원 한 건을 확인하고 테스트 스레드를 정리합니다.
+     *
+     * @param nickname true이면 닉네임 충돌, false이면 이메일 충돌을 재현
+     * @throws Exception 동시 요청, 제한 시간 내 barrier 통과 또는 응답 검증이 실패한 경우
+     */
     @ParameterizedTest @ValueSource(booleans={false,true})
     void databaseUniqueViolationAfterConcurrentPrechecksIs409(boolean nickname) throws Exception {
         CyclicBarrier barrier=new CyclicBarrier(2);

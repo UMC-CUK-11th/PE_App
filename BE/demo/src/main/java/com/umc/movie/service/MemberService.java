@@ -21,6 +21,15 @@ public class MemberService {
     public EmailCheckResponse checkEmail(String email) {
         return new EmailCheckResponse(!memberRepository.existsByEmail(email.strip()));
     }
+    /**
+     * 이메일과 닉네임 중복을 검사하고 비밀번호를 bcrypt로 해싱해 회원을 저장합니다.
+     * 동시 요청으로 사전 검사를 통과해도 DB UNIQUE가 중복 저장을 차단하며,
+     * 해당 저장 예외는 트랜잭션 롤백 후 전역 처리기에서 변환합니다.
+     *
+     * @param request 입력 검증과 공백 정규화를 마친 가입 요청
+     * @return 비밀번호와 해시를 제외한 생성 회원 정보
+     * @throws ApiException 이메일 또는 닉네임이 이미 사용 중인 경우
+     */
     @Transactional
     public SignupResponse signup(SignupRequest request) {
         if (memberRepository.existsByEmail(request.email()))
