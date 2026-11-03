@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/movie.dart';
 import '../theme/app_colors.dart';
+import 'tmdb_poster.dart';
 
 class MovieCard extends StatelessWidget {
   const MovieCard({
@@ -33,11 +34,7 @@ class MovieCard extends StatelessWidget {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(compact ? 16 : 12),
-                  child: Image.asset(
-                    movie.posterAsset,
-                    fit: BoxFit.cover,
-                    semanticLabel: '${movie.title} 포스터',
-                  ),
+                  child: TmdbPoster(movie: movie),
                 ),
                 if (rank != null)
                   Positioned(
