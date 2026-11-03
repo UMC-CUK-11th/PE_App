@@ -1,6 +1,7 @@
-echo FE/build/ > .gitignore
-echo BE/study/build/ >> .gitignore
-echo BE/study/.gradle/ >> .gitignore
+FE/build/
+BE/study/build/
+BE/study/.gradle/
+FE/.dart_tool/
 # Miscellaneous
 *.class
 *.log
