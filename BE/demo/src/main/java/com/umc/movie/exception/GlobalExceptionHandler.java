@@ -5,6 +5,8 @@ import com.umc.movie.repository.MemberRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -20,6 +22,7 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 @RequiredArgsConstructor
+@Slf4j
 public class GlobalExceptionHandler {
     private final MemberRepository memberRepository;
     private ResponseEntity<ApiResponse<Void>> response(int status, String code, String message) {
@@ -43,6 +46,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class})
     public ResponseEntity<ApiResponse<Void>> malformed(Exception error) {
         return response(400, "COMMON400", "JSON 형식과 정수 입력값을 확인해주세요.");
+    }
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> missingParameter(MissingServletRequestParameterException error) {
+        return response(400, "COMMON400", "필수 쿼리 파라미터를 입력해주세요.");
     }
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ApiResponse<Void>> status(ResponseStatusException error) {
@@ -77,6 +84,7 @@ public class GlobalExceptionHandler {
     }
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> unexpected(Exception error) {
+        log.error("처리되지 않은 예외가 발생했습니다.", error);
         return response(500, "COMMON500", "서버에서 요청을 처리하지 못했습니다.");
     }
 }

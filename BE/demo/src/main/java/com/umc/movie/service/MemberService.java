@@ -15,11 +15,11 @@ public class MemberService {
     private final PasswordEncoder passwordEncoder;
     @Transactional(readOnly=true)
     public NicknameCheckResponse checkNickname(String nickname) {
-        return new NicknameCheckResponse(!memberRepository.existsByNickname(nickname));
+        return new NicknameCheckResponse(!memberRepository.existsByNickname(nickname.strip()));
     }
     @Transactional(readOnly=true)
     public EmailCheckResponse checkEmail(String email) {
-        return new EmailCheckResponse(!memberRepository.existsByEmail(email));
+        return new EmailCheckResponse(!memberRepository.existsByEmail(email.strip()));
     }
     @Transactional
     public SignupResponse signup(SignupRequest request) {

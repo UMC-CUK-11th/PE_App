@@ -34,6 +34,8 @@ public class Rating extends BaseTimeEntity {
         this.member = member; this.movieId = movieId; this.score = score; this.comment = comment;
     }
     public void update(Integer score, String comment) {
-        this.score = score; this.comment = comment;
+        this.score = score;
+        // PATCH에서 생략 또는 null은 유지, 빈 문자열은 후기 비우기입니다.
+        if (comment != null) this.comment = comment;
     }
 }

@@ -111,9 +111,19 @@ class Week06ApiTest {
         send("PATCH",path+"/"+id,Map.of("score",3,"comment","수정한 후기"),200);
         JsonNode list=tree(send("GET",path,null,200));assertEquals(1,list.size());
         assertEquals(3,list.get(0).get("score").asInt());assertEquals("수정한 후기",list.get(0).get("comment").asText());
+        long other=signup("other@example.com","다른회원");
+        String otherPath="/members/"+other+"/ratings";
+        long otherRating=tree(send("POST",otherPath,Map.of("movieId",551,"score",2,"comment","다른 후기"),201)).get("result").asLong();
+        JsonNode ownerList=tree(send("GET",path,null,200));
+        assertEquals(1,ownerList.size());assertEquals(id,ownerList.get(0).get("ratingId").asLong());
+        assertEquals("수정한 후기",ownerList.get(0).get("comment").asText());
+        JsonNode otherList=tree(send("GET",otherPath,null,200));
+        assertEquals(1,otherList.size());assertEquals(otherRating,otherList.get(0).get("ratingId").asLong());
+        assertEquals(2,otherList.get(0).get("score").asInt());assertEquals("다른 후기",otherList.get(0).get("comment").asText());
         var deleted=send("DELETE",path+"/"+id,null,204);
         assertEquals("",deleted.getResponse().getContentAsString());
         assertTrue(tree(send("GET",path,null,200)).isEmpty());
+        assertEquals(otherRating,tree(send("GET",otherPath,null,200)).get(0).get("ratingId").asLong());
         code(send("DELETE",path+"/"+id,null,404),"RATING4041");
     }
     @Test void anotherMemberCannotModifyOrDeleteAndMissingRatingIs404() throws Exception {
@@ -147,6 +157,41 @@ class Week06ApiTest {
         signup("test@example.com","제임스");
         assertFalse(tree(send("GET","/members/nickname/제임스",null,200)).get("available").asBoolean());
         assertFalse(tree(send("GET","/members/email/test@example.com",null,200)).get("available").asBoolean());
+        assertTrue(tree(send("GET","/members/nickname/홀란드",null,200)).get("available").asBoolean());
+        assertTrue(tree(send("GET","/members/email/unused@example.com",null,200)).get("available").asBoolean());
+    }
+    @Test void rawJsonSignupAndChecksNormalizePaddedValues() throws Exception {
+        String raw="{\"email\":\"  padded@example.com \",\"nickname\":\" 제임스 \",\"password\":\"Study123!\"}";
+        JsonNode result=tree(send("POST","/members",raw,201)).get("result");
+        assertEquals("padded@example.com",result.get("email").asText());
+        assertEquals("제임스",result.get("nickname").asText());
+        Member stored=members.findByEmail("padded@example.com").orElseThrow();
+        assertEquals("제임스",stored.getNickname());
+        assertFalse(tree(mvc.perform(get("/members/nickname").param("nickname"," 제임스 ")).andExpect(status().isOk()).andReturn()).get("available").asBoolean());
+        assertFalse(tree(mvc.perform(get("/members/email").param("email","  padded@example.com ")).andExpect(status().isOk()).andReturn()).get("available").asBoolean());
+        code(send("POST","/members",signupBody("padded@example.com","홀란드"),409),"MEMBER4091");
+        code(send("POST","/members",signupBody("other@example.com","제임스"),409),"MEMBER4092");
+        assertEquals(1,members.count());
+    }
+    @Test void queryChecksAcceptSlashNicknameAndRequireParameters() throws Exception {
+        signup("slash@example.com","제임스/홀란드");
+        assertFalse(tree(mvc.perform(get("/members/nickname").param("nickname","제임스/홀란드")).andExpect(status().isOk()).andReturn()).get("available").asBoolean());
+        assertTrue(tree(mvc.perform(get("/members/nickname").param("nickname","미사용/닉네임")).andExpect(status().isOk()).andReturn()).get("available").asBoolean());
+        assertTrue(tree(mvc.perform(get("/members/email").param("email","unused@example.com")).andExpect(status().isOk()).andReturn()).get("available").asBoolean());
+        code(send("GET","/members/nickname",null,400),"COMMON400");
+        code(send("GET","/members/email",null,400),"COMMON400");
+    }
+    @Test void patchPreservesOmittedOrNullCommentAndAllowsExplicitEmptyComment() throws Exception {
+        long owner=signup("owner@example.com","주인회원");
+        String path="/members/"+owner+"/ratings";
+        long id=tree(send("POST",path,Map.of("movieId",550,"score",5,"comment","유지할 후기"),201)).get("result").asLong();
+        send("PATCH",path+"/"+id,Map.of("score",3),200);
+        JsonNode changed=tree(send("GET",path,null,200)).get(0);
+        assertEquals(3,changed.get("score").asInt());assertEquals("유지할 후기",changed.get("comment").asText());
+        send("PATCH",path+"/"+id,"{\"score\":4,\"comment\":null}",200);
+        assertEquals("유지할 후기",tree(send("GET",path,null,200)).get(0).get("comment").asText());
+        send("PATCH",path+"/"+id,Map.of("score",2,"comment",""),200);
+        assertEquals("",tree(send("GET",path,null,200)).get(0).get("comment").asText());
     }
     @ParameterizedTest @ValueSource(booleans={false,true})
     void databaseUniqueViolationAfterConcurrentPrechecksIs409(boolean nickname) throws Exception {
