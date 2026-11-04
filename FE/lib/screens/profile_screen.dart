@@ -28,7 +28,39 @@ class ProfileScreen extends StatelessWidget {
               const _ProfileHeader(),
               const SizedBox(height: 32),
               const _ProfileStats(),
-              const SizedBox(height: 32),
+              const SizedBox(height: 26),
+              InkWell(
+                key: const ValueKey('my-ratings-entry'),
+                onTap: () => context.push('/my/ratings'),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  height: 64,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: AppColors.softViolet),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '내가 등록한 평점',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.black,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        color: AppColors.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text('선호하는 장르', style: AppTextStyles.titleMedium),
@@ -57,8 +89,8 @@ class _ProfileHeader extends StatelessWidget {
     return Column(
       children: [
         Container(
-          width: 96,
-          height: 96,
+          width: 126,
+          height: 126,
           padding: const EdgeInsets.all(2),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
@@ -72,33 +104,37 @@ class _ProfileHeader extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 318),
+          constraints: const BoxConstraints(maxWidth: 358),
           child: const Text(
             '무비러버',
             textAlign: TextAlign.center,
-            style: AppTextStyles.titleLarge,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: AppColors.black,
+            ),
           ),
         ),
         const SizedBox(height: 8),
         ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 318),
+          constraints: const BoxConstraints(maxWidth: 358),
           child: const Text(
-            '매주 주말엔 영화관으로 출근하는 프로 관람객. 좋은 영화를 보고 기록하는 것을 좋아합니다.',
+            '매주 주말엔 영화관으로 출근하는 프로 관람객.\n좋은 영화를 보고 기록하는 것을 좋아합니다.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: AppColors.onSurfaceVariant,
-              fontSize: 14,
-              height: 20 / 14,
+              fontSize: 13,
+              height: 20 / 13,
               fontWeight: FontWeight.w400,
             ),
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 37),
         SizedBox(
           width: 127,
-          height: 42,
+          height: 40,
           child: TextButton(
             onPressed: () {
               debugPrint('프로필 수정 버튼을 눌렀습니다.');
@@ -106,7 +142,7 @@ class _ProfileHeader extends StatelessWidget {
             style: TextButton.styleFrom(
               foregroundColor: AppColors.violet,
               side: const BorderSide(color: AppColors.violet),
-              minimumSize: const Size(127, 42),
+              minimumSize: const Size(127, 40),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               shape: RoundedRectangleBorder(
@@ -115,13 +151,6 @@ class _ProfileHeader extends StatelessWidget {
             ),
             child: const Text('프로필 수정', style: AppTextStyles.labelLarge),
           ),
-        ),
-        const SizedBox(height: 12),
-        TextButton.icon(
-          onPressed: () => context.push('/week05-api'),
-          icon: const Icon(Icons.api),
-          label: const Text('5주차 API 확인'),
-          style: TextButton.styleFrom(foregroundColor: AppColors.violet),
         ),
       ],
     );

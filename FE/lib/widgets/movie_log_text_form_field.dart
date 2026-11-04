@@ -22,6 +22,8 @@ class MovieLogTextFormField extends StatelessWidget {
     this.onToggleObscure,
     this.inputFontWeight = FontWeight.w400,
     this.hintFontWeight = FontWeight.w500,
+    this.showLabel = true,
+    this.formFieldKey,
     super.key,
   });
 
@@ -41,6 +43,8 @@ class MovieLogTextFormField extends StatelessWidget {
   final VoidCallback? onToggleObscure;
   final FontWeight inputFontWeight;
   final FontWeight hintFontWeight;
+  final bool showLabel;
+  final Key? formFieldKey;
 
   @override
   Widget build(BuildContext context) {
@@ -49,14 +53,17 @@ class MovieLogTextFormField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          label,
-          style: isCompact
-              ? AppTextStyles.fieldLabelCompact
-              : AppTextStyles.fieldLabel,
-        ),
-        const SizedBox(height: 4),
+        if (showLabel) ...[
+          Text(
+            label,
+            style: isCompact
+                ? AppTextStyles.fieldLabelCompact
+                : AppTextStyles.fieldLabel,
+          ),
+          const SizedBox(height: 4),
+        ],
         TextFormField(
+          key: formFieldKey,
           controller: controller,
           focusNode: focusNode,
           validator: validator,

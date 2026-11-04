@@ -10,18 +10,22 @@ import '../data/services/tmdb_movie_service.dart';
 import '../models/movie.dart';
 import '../screens/home_screen.dart';
 import '../screens/main_screen.dart';
+import '../screens/member_ratings_screen.dart';
 import '../screens/movie_detail_screen.dart';
 import '../screens/movie_list_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/register_screen.dart';
 import '../screens/start_screen.dart';
 import '../screens/week05_api_screen.dart';
+import '../view_models/member_ratings_view_model.dart';
 
 abstract final class AppRouter {
   static GoRouter createRouter({
     String initialLocation = '/start',
     MovieService? movieService,
     MovieCatalogService? catalogService,
+    MemberApiService? memberApiService,
+    TmdbMovieService? tmdbMovieService,
     MovieListPreferences movieListPreferences =
         const SharedPreferencesMovieListPreferences(),
   }) {
@@ -30,6 +34,13 @@ abstract final class AppRouter {
         LegacyMovieCatalogAdapter(
           movieService ?? const FakeMovieService(delay: Duration.zero),
         );
+    final resolvedMemberApiService =
+        memberApiService ?? MemberApiService.fromEnvironment();
+    final resolvedTmdbMovieService =
+        tmdbMovieService ??
+        (resolvedCatalogService is TmdbMovieService
+            ? resolvedCatalogService
+            : TmdbMovieService.fromEnvironment());
     return GoRouter(
       initialLocation: initialLocation,
       routes: [
@@ -39,7 +50,18 @@ abstract final class AppRouter {
         ),
         GoRoute(
           path: '/register',
-          builder: (context, state) => const RegisterScreen(),
+          builder: (context, state) =>
+              RegisterScreen(apiService: resolvedMemberApiService),
+        ),
+        GoRoute(
+          path: '/my/ratings',
+          builder: (context, state) => MemberRatingsScreen(
+            viewModel: MemberRatingsViewModel(
+              memberId: 1,
+              memberApiService: resolvedMemberApiService,
+              movieService: resolvedTmdbMovieService,
+            ),
+          ),
         ),
         StatefulShellRoute.indexedStack(
           builder: (context, state, navigationShell) {
@@ -100,7 +122,7 @@ abstract final class AppRouter {
         GoRoute(
           path: '/week05-api',
           builder: (context, state) =>
-              Week05ApiScreen(apiService: MemberApiService.fromEnvironment()),
+              Week05ApiScreen(apiService: resolvedMemberApiService),
         ),
       ],
     );
