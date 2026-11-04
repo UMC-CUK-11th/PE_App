@@ -99,7 +99,14 @@ class MemberControllerTest {
 
     @Test
     void rejectsTooLongEmailDuringSignUpValidation() throws Exception {
-        String email = "a".repeat(250) + "@x.com";
+        String email = "a".repeat(64)
+                + "@"
+                + "b".repeat(63)
+                + "."
+                + "c".repeat(63)
+                + "."
+                + "d".repeat(63)
+                + ".com";
 
         mockMvc.perform(post("/members")
                         .contentType("application/json")
@@ -113,7 +120,7 @@ class MemberControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.isSuccess").value(false))
                 .andExpect(jsonPath("$.code").value("COMMON4001"))
-                .andExpect(jsonPath("$.message").isNotEmpty());
+                .andExpect(jsonPath("$.message").value("이메일은 254자 이하로 입력해주세요."));
     }
 
     @Test

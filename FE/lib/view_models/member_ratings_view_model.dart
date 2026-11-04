@@ -25,6 +25,7 @@ class MemberRatingItem {
 
 class MemberRatingsViewModel extends ChangeNotifier {
   static const int _pageSize = 100;
+  static const int _movieFetchBatchSize = 8;
 
   MemberRatingsViewModel({
     required this.memberId,
@@ -53,16 +54,7 @@ class MemberRatingsViewModel extends ChangeNotifier {
         _notifyListeners();
         return;
       }
-      items = await Future.wait(
-        ratings.map((rating) async {
-          try {
-            final movie = await movieService.fetchMovieById(rating.movieId);
-            return MemberRatingItem(rating: rating, movie: movie);
-          } on Object {
-            return MemberRatingItem(rating: rating);
-          }
-        }),
-      );
+      items = await _fetchRatingItems(ratings);
       if (_disposed) return;
       state = MemberRatingsLoadState.success;
     } on Object {
@@ -87,6 +79,31 @@ class MemberRatingsViewModel extends ChangeNotifier {
       if (currentPage.length < _pageSize) return ratings;
       page++;
     }
+  }
+
+  Future<List<MemberRatingItem>> _fetchRatingItems(
+    List<MemberRating> ratings,
+  ) async {
+    final ratingItems = <MemberRatingItem>[];
+    for (var start = 0; start < ratings.length; start += _movieFetchBatchSize) {
+      if (_disposed) return const [];
+      final batchEnd = start + _movieFetchBatchSize;
+      final end = batchEnd < ratings.length ? batchEnd : ratings.length;
+      final batch = ratings.sublist(start, end);
+      ratingItems.addAll(
+        await Future.wait(
+          batch.map((rating) async {
+            try {
+              final movie = await movieService.fetchMovieById(rating.movieId);
+              return MemberRatingItem(rating: rating, movie: movie);
+            } on Object {
+              return MemberRatingItem(rating: rating);
+            }
+          }),
+        ),
+      );
+    }
+    return ratingItems;
   }
 
   void _notifyListeners() {
