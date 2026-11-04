@@ -5,6 +5,7 @@ import jakarta.validation.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -15,6 +16,15 @@ public class GlobalExceptionHandler {
 
     private static final String EMAIL_CONSTRAINT = "uk_member_email";
     private static final String NICKNAME_CONSTRAINT = "uk_member_nickname";
+    private static final String RATING_CONSTRAINT = "uk_rating_member_movie";
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableMessage(
+            HttpMessageNotReadableException exception
+    ) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.failure("COMMON4001", "요청 본문이 올바르지 않습니다."));
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidation(
@@ -50,6 +60,13 @@ public class GlobalExceptionHandler {
         }
         if (causeMessage.contains(NICKNAME_CONSTRAINT)) {
             return conflict(MemberConflictException.duplicateNickname());
+        }
+        if (causeMessage.contains(RATING_CONSTRAINT)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.failure(
+                            "COMMON4092",
+                            "이미 이 영화에 평점을 남기셨습니다."
+                    ));
         }
         if (isLegacyMemberUniqueViolation(causeMessage)) {
             String duplicateValue = extractDuplicateValue(causeMessage);

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -126,6 +128,57 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('254자를 초과한 이메일은 중복 확인 전에 길이 오류를 표시한다', (tester) async {
+    await pumpRegisterScreen(
+      tester,
+      apiService: MemberApiService(_fakeDio((_) => {'available': true})),
+    );
+
+    final emailField = find.byType(TextFormField).at(1);
+    final email = '${List.filled(250, 'a').join()}@x.com';
+    await tester.enterText(emailField, email);
+    await tester.pump();
+
+    expect(find.text('이메일은 254자 이하여야 합니다.'), findsOneWidget);
+    final checkButton = tester.widget<FilledButton>(
+      find.descendant(
+        of: find.byKey(const ValueKey('이메일-check-button')),
+        matching: find.byType(FilledButton),
+      ),
+    );
+    expect(checkButton.onPressed, isNull);
+  });
+
+  testWidgets('입력이 원래 값으로 돌아와도 이전 중복 확인 응답을 무시한다', (tester) async {
+    final response = Completer<Response<dynamic>>();
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          handler.resolve(await response.future);
+        },
+      ),
+    );
+    await pumpRegisterScreen(tester, apiService: MemberApiService(dio));
+
+    final nicknameField = find.byType(TextFormField).first;
+    await tester.enterText(nicknameField, '노바');
+    await tester.tap(find.byKey(const ValueKey('닉네임-check-button')));
+    await tester.pump();
+    await tester.enterText(nicknameField, '다른닉네임');
+    await tester.enterText(nicknameField, '노바');
+    response.complete(
+      Response<dynamic>(
+        requestOptions: RequestOptions(path: '/members/nickname/노바'),
+        statusCode: 200,
+        data: {'available': true},
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('사용 가능한 닉네임입니다.'), findsNothing);
   });
 }
 

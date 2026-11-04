@@ -24,6 +24,8 @@ class MemberRatingItem {
 }
 
 class MemberRatingsViewModel extends ChangeNotifier {
+  static const int _pageSize = 100;
+
   MemberRatingsViewModel({
     required this.memberId,
     required this.memberApiService,
@@ -36,16 +38,19 @@ class MemberRatingsViewModel extends ChangeNotifier {
 
   MemberRatingsLoadState state = MemberRatingsLoadState.loading;
   List<MemberRatingItem> items = const [];
+  bool _disposed = false;
 
   Future<void> load() async {
+    if (_disposed) return;
     state = MemberRatingsLoadState.loading;
-    notifyListeners();
+    _notifyListeners();
     try {
-      final ratings = await memberApiService.fetchRatings(memberId);
+      final ratings = await _fetchAllRatings();
+      if (_disposed) return;
       if (ratings.isEmpty) {
         items = const [];
         state = MemberRatingsLoadState.empty;
-        notifyListeners();
+        _notifyListeners();
         return;
       }
       items = await Future.wait(
@@ -58,11 +63,39 @@ class MemberRatingsViewModel extends ChangeNotifier {
           }
         }),
       );
+      if (_disposed) return;
       state = MemberRatingsLoadState.success;
     } on Object {
+      if (_disposed) return;
       items = const [];
       state = MemberRatingsLoadState.error;
     }
-    notifyListeners();
+    _notifyListeners();
+  }
+
+  Future<List<MemberRating>> _fetchAllRatings() async {
+    final ratings = <MemberRating>[];
+    var page = 0;
+    while (true) {
+      final currentPage = await memberApiService.fetchRatings(
+        memberId,
+        page: page,
+        size: _pageSize,
+      );
+      if (_disposed) return const [];
+      ratings.addAll(currentPage);
+      if (currentPage.length < _pageSize) return ratings;
+      page++;
+    }
+  }
+
+  void _notifyListeners() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

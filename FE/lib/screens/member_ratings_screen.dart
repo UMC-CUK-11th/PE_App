@@ -94,7 +94,7 @@ class _RatingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final comment = item.rating.comment?.trim();
     return Container(
-      height: 156,
+      constraints: const BoxConstraints(minHeight: 156),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: AppColors.warmWhite,
@@ -124,6 +124,7 @@ class _RatingCard extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.only(top: 10),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(

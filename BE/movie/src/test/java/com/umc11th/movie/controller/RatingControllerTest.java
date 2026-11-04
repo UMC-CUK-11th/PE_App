@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.HttpStatus;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.server.ResponseStatusException;
@@ -126,6 +127,28 @@ class RatingControllerTest {
     void rejectsDuplicateRatingWithConflictResponse() throws Exception {
         when(ratingService.create(org.mockito.ArgumentMatchers.eq(1L), any()))
                 .thenThrow(new IllegalArgumentException("이미 이 영화에 평점을 남기셨습니다."));
+
+        mockMvc.perform(post("/members/{memberId}/ratings", 1)
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "movieId": 550,
+                                  "score": 5
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.isSuccess").value(false))
+                .andExpect(jsonPath("$.code").value("COMMON4092"))
+                .andExpect(jsonPath("$.message")
+                        .value("이미 이 영화에 평점을 남기셨습니다."));
+    }
+
+    @Test
+    void convertsRatingDatabaseUniqueViolationToSameConflictResponse() throws Exception {
+        when(ratingService.create(org.mockito.ArgumentMatchers.eq(1L), any()))
+                .thenThrow(new DataIntegrityViolationException(
+                        "Duplicate entry for key 'uk_rating_member_movie'"
+                ));
 
         mockMvc.perform(post("/members/{memberId}/ratings", 1)
                         .contentType("application/json")

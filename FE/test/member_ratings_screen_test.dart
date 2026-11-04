@@ -87,6 +87,52 @@ void main() {
     expect(find.text('평점 목록을 불러오지 못했습니다.'), findsOneWidget);
     expect(find.text('다시 시도'), findsOneWidget);
   });
+
+  test('평점 목록의 모든 페이지를 누적해서 불러온다', () async {
+    final requestedPages = <int>[];
+    final memberDio = Dio(BaseOptions(baseUrl: 'http://localhost'));
+    memberDio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          final page = options.queryParameters['page'] as int;
+          requestedPages.add(page);
+          final count = page == 0 ? 100 : 1;
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: options,
+              statusCode: 200,
+              data: List.generate(
+                count,
+                (index) => _ratingJson(movieId: page * 100 + index + 1),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    final viewModel = MemberRatingsViewModel(
+      memberId: 1,
+      memberApiService: MemberApiService(memberDio),
+      movieService: TmdbMovieService(
+        _dio(
+          (options) => {
+            'id': int.parse(options.path.split('/').last),
+            'title': '영화',
+            'vote_average': 0,
+            'overview': '',
+            'poster_path': null,
+          },
+        ),
+      ),
+    );
+    addTearDown(viewModel.dispose);
+
+    await viewModel.load();
+
+    expect(requestedPages, [0, 1]);
+    expect(viewModel.items, hasLength(101));
+    expect(viewModel.state, MemberRatingsLoadState.success);
+  });
 }
 
 Widget _app(MemberRatingsViewModel viewModel) {

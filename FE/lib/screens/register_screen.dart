@@ -40,6 +40,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _passwordTouched = false;
   bool _agreedToTerms = false;
   bool _obscurePassword = true;
+  int _nicknameRequestId = 0;
+  int _emailRequestId = 0;
 
   @override
   void initState() {
@@ -69,6 +71,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String? _validateEmailFormat(String? value) {
     final email = value?.trim() ?? '';
     if (email.isEmpty) return '이메일을 입력해주세요.';
+    if (email.length > 254) return '이메일은 254자 이하여야 합니다.';
     if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email)) {
       return '올바른 이메일 형식이 아닙니다.';
     }
@@ -121,6 +124,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void _onNicknameChanged(String value) {
     final nickname = value.trim();
     setState(() {
+      _nicknameRequestId++;
       _nicknameTouched = true;
       _nicknameState = _duplicateNicknames.contains(nickname)
           ? AvailabilityState.duplicate
@@ -132,6 +136,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void _onEmailChanged(String value) {
     final email = value.trim().toLowerCase();
     setState(() {
+      _emailRequestId++;
       _emailTouched = true;
       _emailState = _duplicateEmails.contains(email)
           ? AvailabilityState.duplicate
@@ -147,10 +152,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _nicknameFieldKey.currentState?.validate();
       return;
     }
+    final requestId = ++_nicknameRequestId;
     setState(() => _nicknameState = AvailabilityState.loading);
     try {
       final available = await _apiService.isNicknameAvailable(nickname);
-      if (!mounted || _nicknameController.text.trim() != nickname) return;
+      if (!mounted ||
+          requestId != _nicknameRequestId ||
+          _nicknameController.text.trim() != nickname) {
+        return;
+      }
       setState(() {
         _nicknameState = available
             ? AvailabilityState.available
@@ -158,7 +168,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         if (!available) _duplicateNicknames.add(nickname);
       });
     } on Object {
-      if (!mounted || _nicknameController.text.trim() != nickname) return;
+      if (!mounted ||
+          requestId != _nicknameRequestId ||
+          _nicknameController.text.trim() != nickname) {
+        return;
+      }
       setState(() => _nicknameState = AvailabilityState.networkError);
     }
     _nicknameFieldKey.currentState?.validate();
@@ -171,10 +185,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _emailFieldKey.currentState?.validate();
       return;
     }
+    final requestId = ++_emailRequestId;
     setState(() => _emailState = AvailabilityState.loading);
     try {
       final available = await _apiService.isEmailAvailable(email);
-      if (!mounted || _emailController.text.trim().toLowerCase() != email) {
+      if (!mounted ||
+          requestId != _emailRequestId ||
+          _emailController.text.trim().toLowerCase() != email) {
         return;
       }
       setState(() {
@@ -184,7 +201,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         if (!available) _duplicateEmails.add(email);
       });
     } on Object {
-      if (!mounted || _emailController.text.trim().toLowerCase() != email) {
+      if (!mounted ||
+          requestId != _emailRequestId ||
+          _emailController.text.trim().toLowerCase() != email) {
         return;
       }
       setState(() => _emailState = AvailabilityState.networkError);

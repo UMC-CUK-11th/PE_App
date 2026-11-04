@@ -9,12 +9,18 @@ import com.umc11th.movie.exception.MemberConflictException;
 import com.umc11th.movie.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.nio.charset.StandardCharsets;
 
 @Service
 @RequiredArgsConstructor
 public class MemberService {
+
+    private static final int BCRYPT_MAX_PASSWORD_BYTES = 72;
 
     private final MemberRepository memberRepository;
     private final PasswordEncoder passwordEncoder;
@@ -31,6 +37,13 @@ public class MemberService {
 
     @Transactional
     public MemberResponse signUp(SignUpRequest request) {
+        if (request.password().getBytes(StandardCharsets.UTF_8).length
+                > BCRYPT_MAX_PASSWORD_BYTES) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "비밀번호는 UTF-8 기준 72바이트 이하로 입력해주세요."
+            );
+        }
         if (memberRepository.existsByEmail(request.email())) {
             throw MemberConflictException.duplicateEmail();
         }

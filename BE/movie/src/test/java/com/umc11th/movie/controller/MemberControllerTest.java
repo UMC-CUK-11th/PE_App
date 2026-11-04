@@ -98,6 +98,37 @@ class MemberControllerTest {
     }
 
     @Test
+    void rejectsTooLongEmailDuringSignUpValidation() throws Exception {
+        String email = "a".repeat(250) + "@x.com";
+
+        mockMvc.perform(post("/members")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "password": "Umc!1234",
+                                  "nickname": "moviefan"
+                                }
+                                """.formatted(email)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.isSuccess").value(false))
+                .andExpect(jsonPath("$.code").value("COMMON4001"))
+                .andExpect(jsonPath("$.message").isNotEmpty());
+    }
+
+    @Test
+    void rejectsMalformedJsonWithCommonErrorResponse() throws Exception {
+        mockMvc.perform(post("/members")
+                        .contentType("application/json")
+                        .content("{\"email\": \"umc@example.com\","))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.isSuccess").value(false))
+                .andExpect(jsonPath("$.code").value("COMMON4001"))
+                .andExpect(jsonPath("$.message").value("요청 본문이 올바르지 않습니다."))
+                .andExpect(jsonPath("$.result").doesNotExist());
+    }
+
+    @Test
     void convertsDatabaseUniqueViolationToConflictResponse() throws Exception {
         when(memberService.signUp(org.mockito.ArgumentMatchers.any()))
                 .thenThrow(new DataIntegrityViolationException(

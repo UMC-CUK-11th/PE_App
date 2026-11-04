@@ -11,6 +11,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -97,5 +98,18 @@ class MemberServiceTest {
                 .satisfies(exception -> assertThat(
                         ((MemberConflictException) exception).getCode()
                 ).isEqualTo("MEMBER4092"));
+    }
+
+    @Test
+    void rejectsPasswordLongerThanBcryptByteLimit() {
+        SignUpRequest request = new SignUpRequest(
+                "new@example.com",
+                "가".repeat(25) + "Aa1!",
+                "moviefan"
+        );
+
+        assertThatThrownBy(() -> memberService.signUp(request))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("72바이트 이하");
     }
 }
