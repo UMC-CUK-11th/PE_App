@@ -7,7 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "rating", uniqueConstraints = @UniqueConstraint(columnNames = {"member_id", "movie_id"}))
+@Table(name = "rating", uniqueConstraints = @UniqueConstraint(name="uk_rating_member_movie", columnNames = {"member_id", "movie_id"}))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Rating extends BaseTimeEntity {
@@ -29,4 +29,18 @@ public class Rating extends BaseTimeEntity {
 
     @Column(columnDefinition = "TEXT")
     private String comment;
+
+    public Rating(Member member, Long movieId, Integer score, String comment) {
+        this.member = member; this.movieId = movieId; this.score = score; this.comment = comment;
+    }
+    /**
+     * v7 요청의 별점과 후기로 평점 내용을 교체합니다.
+     *
+     * @param score 요청 DTO에서 1~5 범위로 검증된 별점
+     * @param comment 새 후기. null이면 기존 후기를 지웁니다.
+     */
+    public void update(Integer score, String comment) {
+        this.score = score;
+        this.comment = comment;
+    }
 }

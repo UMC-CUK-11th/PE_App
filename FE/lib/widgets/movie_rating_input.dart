@@ -7,11 +7,13 @@ class MovieRatingInput extends StatelessWidget {
   const MovieRatingInput({
     required this.rating,
     required this.onChanged,
+    this.allowHalfRating = true,
     super.key,
   });
 
   final double rating;
   final ValueChanged<double> onChanged;
+  final bool allowHalfRating;
 
   @override
   Widget build(BuildContext context) {
@@ -19,8 +21,8 @@ class MovieRatingInput extends StatelessWidget {
       key: ValueKey(rating),
       child: RatingBar.builder(
         initialRating: rating,
-        minRating: 0.5,
-        allowHalfRating: true,
+        minRating: allowHalfRating ? 0.5 : 1,
+        allowHalfRating: allowHalfRating,
         itemCount: 5,
         itemSize: 40,
         glow: false,

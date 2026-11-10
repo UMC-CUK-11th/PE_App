@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+
+import 'services/member_check_service.dart';
+import 'services/movie_log_client.dart';
+import 'view_models/signup_view_model.dart';
+import 'view_models/learning_member_session.dart';
+import 'widgets/movielog_button.dart';
 
 import 'theme/app_colors.dart';
 import 'theme/app_text_styles.dart';
@@ -24,6 +31,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _emailFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
 
+  late final SignUpViewModel _viewModel;
+  late final VoidCallback _closeClient;
+
+  @override
+  void initState() {
+    super.initState();
+    final provided = context.read<MemberCheckService?>();
+    if (provided != null) {
+      _viewModel = SignUpViewModel(provided);
+      _closeClient = () {};
+    } else {
+      final client = createMovieLogClient();
+      _viewModel = SignUpViewModel(MemberCheckService(client));
+      _closeClient = () => client.close(force: true);
+    }
+  }
+
   bool _nicknameTouched = false;
   bool _emailTouched = false;
   bool _passwordTouched = false;
@@ -32,6 +56,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   void dispose() {
+    _viewModel.dispose();
+    _closeClient();
     _nicknameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -41,30 +67,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-  String? _validateNickname(String? value) {
-    final nickname = value?.trim() ?? '';
-    if (nickname.isEmpty) return '닉네임을 입력해주세요.';
-    if (nickname.length < 2) return '닉네임은 2자 이상이어야 합니다.';
-    return null;
-  }
-
-  String? _validateEmail(String? value) {
-    final email = value?.trim() ?? '';
-    if (email.isEmpty) return '이메일을 입력해주세요.';
-
-    final emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
-    if (!emailPattern.hasMatch(email)) return '올바른 이메일 형식이 아닙니다.';
-    return null;
-  }
+  String? _validateNickname(String? value) =>
+      SignUpViewModel.validateNickname(value);
+  String? _validateEmail(String? value) => SignUpViewModel.validateEmail(value);
 
   String? _validatePassword(String? value) {
     final password = value ?? '';
     if (password.isEmpty) return '비밀번호를 입력해주세요.';
     if (password.length < 8) return '비밀번호는 8자 이상이어야 합니다.';
-    final hasEnglishLetter = RegExp(r'[A-Za-z]').hasMatch(password);
-    final hasNumber = RegExp(r'[0-9]').hasMatch(password);
-    if (!hasEnglishLetter || !hasNumber) {
-      return '비밀번호는 영문과 숫자를 포함해야 합니다.';
+    if (!RegExp(r'[a-z]').hasMatch(password) ||
+        !RegExp(r'[A-Z]').hasMatch(password) ||
+        !RegExp(r'[0-9]').hasMatch(password) ||
+        !RegExp(r'[!@#$%^&*]').hasMatch(password) ||
+        RegExp(r'\s').hasMatch(password)) {
+      return '대문자, 소문자, 숫자, 특수문자를 포함하고 공백을 빼주세요.';
     }
     return null;
   }
@@ -76,15 +92,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _validatePassword(_passwordController.text) == null;
 
   bool get _canSubmit =>
-      _isNicknameValid && _isEmailValid && _isPasswordValid && _agreedToTerms;
+      _isNicknameValid &&
+      _isEmailValid &&
+      _isPasswordValid &&
+      _agreedToTerms &&
+      _viewModel.bothAvailable &&
+      !_viewModel.isSubmitting;
 
-  void _submit() {
+  Future<void> _submit() async {
     final isValid = _formKey.currentState?.validate() ?? false;
-    if (!isValid || !_agreedToTerms) return;
-
+    if (!isValid || !_canSubmit) return;
     FocusScope.of(context).unfocus();
-    debugPrint('회원가입이 완료되었습니다.');
-    context.go('/home');
+    final session = context.read<LearningMemberSession>();
+    final id = await _viewModel.submit(_passwordController.text);
+    if (!mounted) return;
+    if (id != null) {
+      session.start(id);
+      context.go('/movies');
+    } else if (_viewModel.snackbarMessage case final message?) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   void _handleAgreementChanged(bool? value) {
@@ -94,13 +122,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth >= 700) {
-          return _buildWideLayout();
-        }
-        return _buildMobileLayout();
-      },
+    return ListenableBuilder(
+      listenable: _viewModel,
+      builder: (context, child) => PopScope(
+        canPop: !_viewModel.isSubmitting,
+        child: IgnorePointer(
+          ignoring: _viewModel.isSubmitting,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth >= 700) {
+                return _buildWideLayout();
+              }
+              return _buildMobileLayout();
+            },
+          ),
+        ),
+      ),
     );
   }
 
@@ -145,6 +182,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           isWide: false,
                           agreedToTerms: _agreedToTerms,
                           canSubmit: _canSubmit,
+                          isSubmitting: _viewModel.isSubmitting,
                           onAgreementChanged: _handleAgreementChanged,
                           onSubmit: _submit,
                         ),
@@ -190,6 +228,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           isWide: true,
                           agreedToTerms: _agreedToTerms,
                           canSubmit: _canSubmit,
+                          isSubmitting: _viewModel.isSubmitting,
                           onAgreementChanged: _handleAgreementChanged,
                           onSubmit: _submit,
                         ),
@@ -205,56 +244,125 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  Widget _withCheckButton({
+    required Widget child,
+    required bool isWide,
+    required bool nickname,
+  }) {
+    final status = nickname
+        ? _viewModel.nicknameCheckStatus
+        : _viewModel.emailCheckStatus;
+    final enabled = nickname
+        ? _viewModel.canCheckNickname
+        : _viewModel.canCheckEmail;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: child),
+            const SizedBox(width: 8),
+            Padding(
+              padding: EdgeInsets.only(top: isWide ? 24 : 28),
+              child: MovieLogButton(
+                key: ValueKey(nickname ? 'check-nickname' : 'check-email'),
+                label: '중복 확인',
+                width: nickname ? null : 104,
+                height: 42,
+                isLoading: status == CheckStatus.checking,
+                onPressed: !enabled
+                    ? null
+                    : () {
+                        if (nickname) {
+                          _viewModel.checkNickname(_nicknameController.text);
+                        } else {
+                          _viewModel.checkEmail(_emailController.text);
+                        }
+                      },
+              ),
+            ),
+          ],
+        ),
+        if (status == CheckStatus.available)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 4),
+            child: Text(
+              '사용할 수 있는 ${nickname ? '닉네임' : '이메일'}입니다.',
+              style: const TextStyle(color: AppColors.violet, fontSize: 12),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _buildFields({required bool isWide}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        MovieLogTextFormField(
-          label: '닉네임',
-          hintText: isWide ? '영화로운 닉네임을 입력하세요' : '닉네임을 입력해주세요',
-          controller: _nicknameController,
-          focusNode: _nicknameFocusNode,
-          validator: _validateNickname,
-          onChanged: (_) {
-            setState(() => _nicknameTouched = true);
-          },
-          onFieldSubmitted: (_) => _emailFocusNode.requestFocus(),
-          textInputAction: TextInputAction.next,
-          keyboardType: TextInputType.name,
-          isCompact: isWide,
-          isValid: _nicknameTouched && _isNicknameValid,
-          showError: _nicknameTouched && !_isNicknameValid,
-          inputFontWeight: _nicknameTouched && _isNicknameValid
-              ? FontWeight.w500
-              : FontWeight.w400,
-          hintFontWeight: isWide ? FontWeight.w400 : FontWeight.w500,
+        _withCheckButton(
+          isWide: isWide,
+          nickname: true,
+          child: MovieLogTextFormField(
+            label: '닉네임',
+            hintText: isWide ? '영화로운 닉네임을 입력하세요' : '닉네임을 입력해주세요',
+            controller: _nicknameController,
+            readOnly: _viewModel.isSubmitting,
+            focusNode: _nicknameFocusNode,
+            validator: _validateNickname,
+            onChanged: (value) {
+              _viewModel.onNicknameChanged(value);
+              setState(() => _nicknameTouched = true);
+            },
+            onFieldSubmitted: (_) => _emailFocusNode.requestFocus(),
+            textInputAction: TextInputAction.next,
+            keyboardType: TextInputType.name,
+            isCompact: isWide,
+            isValid: _viewModel.nicknameCheckStatus == CheckStatus.available,
+            externalErrorText: _viewModel.nicknameErrorText,
+            showError: _nicknameTouched && !_isNicknameValid,
+            inputFontWeight: _nicknameTouched && _isNicknameValid
+                ? FontWeight.w500
+                : FontWeight.w400,
+            hintFontWeight: isWide ? FontWeight.w400 : FontWeight.w500,
+          ),
         ),
         SizedBox(height: isWide ? 4 : 16),
-        MovieLogTextFormField(
-          label: isWide ? '이메일 주소' : '이메일',
-          hintText: isWide ? 'example@movielog.com' : '이메일 주소를 입력해주세요',
-          controller: _emailController,
-          focusNode: _emailFocusNode,
-          validator: _validateEmail,
-          onChanged: (_) {
-            setState(() => _emailTouched = true);
-          },
-          onFieldSubmitted: (_) => _passwordFocusNode.requestFocus(),
-          textInputAction: TextInputAction.next,
-          keyboardType: TextInputType.emailAddress,
-          isCompact: isWide,
-          isValid: _emailTouched && _isEmailValid,
-          showError: _emailTouched && !_isEmailValid,
-          hintFontWeight: isWide ? FontWeight.w400 : FontWeight.w500,
+        _withCheckButton(
+          isWide: isWide,
+          nickname: false,
+          child: MovieLogTextFormField(
+            label: isWide ? '이메일 주소' : '이메일',
+            hintText: isWide ? 'example@movielog.com' : '이메일 주소를 입력해주세요',
+            controller: _emailController,
+            readOnly: _viewModel.isSubmitting,
+            focusNode: _emailFocusNode,
+            validator: _validateEmail,
+            onChanged: (value) {
+              _viewModel.onEmailChanged(value);
+              setState(() => _emailTouched = true);
+            },
+            onFieldSubmitted: (_) => _passwordFocusNode.requestFocus(),
+            textInputAction: TextInputAction.next,
+            keyboardType: TextInputType.emailAddress,
+            isCompact: isWide,
+            isValid: _viewModel.emailCheckStatus == CheckStatus.available,
+            externalErrorText: _viewModel.emailErrorText,
+            showError: _emailTouched && !_isEmailValid,
+            hintFontWeight: isWide ? FontWeight.w400 : FontWeight.w500,
+          ),
         ),
         SizedBox(height: isWide ? 4 : 16),
         MovieLogTextFormField(
           label: '비밀번호',
-          hintText: isWide ? '영문, 숫자 포함 8자 이상' : '비밀번호를 입력해주세요',
+          hintText: isWide ? '대·소문자, 숫자, 특수문자 포함 8자 이상' : '비밀번호를 입력해주세요',
           controller: _passwordController,
+          readOnly: _viewModel.isSubmitting,
           focusNode: _passwordFocusNode,
           validator: _validatePassword,
+          externalErrorText: _viewModel.passwordErrorText,
           onChanged: (_) {
+            _viewModel.onPasswordChanged();
             setState(() => _passwordTouched = true);
           },
           onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
@@ -313,6 +421,7 @@ class _SignUpActions extends StatelessWidget {
     required this.isWide,
     required this.agreedToTerms,
     required this.canSubmit,
+    required this.isSubmitting,
     required this.onAgreementChanged,
     required this.onSubmit,
   });
@@ -320,6 +429,7 @@ class _SignUpActions extends StatelessWidget {
   final bool isWide;
   final bool agreedToTerms;
   final bool canSubmit;
+  final bool isSubmitting;
   final ValueChanged<bool?> onAgreementChanged;
   final VoidCallback onSubmit;
 
@@ -360,29 +470,18 @@ class _SignUpActions extends StatelessWidget {
           ],
         ),
         SizedBox(height: isWide ? 32 : 24),
-        SizedBox(
+        MovieLogButton(
+          label: '가입하기',
+          width: double.infinity,
           height: 56,
-          child: ElevatedButton(
-            onPressed: canSubmit ? onSubmit : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.violet,
-              disabledBackgroundColor: AppColors.disabledButton,
-              foregroundColor: AppColors.white,
-              disabledForegroundColor: AppColors.white,
-              elevation: 1,
-              shadowColor: const Color(0x0D000000),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: Text(
-              '가입하기',
-              style: isWide
-                  ? AppTextStyles.buttonLabelCompact
-                  : AppTextStyles.buttonLabel,
-            ),
-          ),
+          onPressed: canSubmit ? onSubmit : null,
+          isLoading: isSubmitting,
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '워크북 실습 서버에 회원을 등록합니다.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
         ),
         const SizedBox(height: 40),
         Row(

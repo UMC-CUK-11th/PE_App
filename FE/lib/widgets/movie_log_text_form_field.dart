@@ -14,6 +14,8 @@ class MovieLogTextFormField extends StatelessWidget {
     required this.onChanged,
     required this.textInputAction,
     this.keyboardType,
+    this.externalErrorText,
+    this.readOnly = false,
     this.onFieldSubmitted,
     this.isCompact = false,
     this.isValid = false,
@@ -25,6 +27,8 @@ class MovieLogTextFormField extends StatelessWidget {
     super.key,
   });
 
+  final String? externalErrorText;
+  final bool readOnly;
   final String label;
   final String hintText;
   final TextEditingController controller;
@@ -44,7 +48,9 @@ class MovieLogTextFormField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final validationMessage = showError ? validator(controller.text) : null;
+    final validationMessage =
+        externalErrorText ?? (showError ? validator(controller.text) : null);
+    final hasError = showError || externalErrorText != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -57,9 +63,11 @@ class MovieLogTextFormField extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         TextFormField(
+          readOnly: readOnly,
           controller: controller,
           focusNode: focusNode,
-          validator: validator,
+          validator: (value) => validator(value) ?? externalErrorText,
+          forceErrorText: externalErrorText,
           errorBuilder: isCompact
               ? (context, errorText) => const SizedBox.shrink()
               : null,
@@ -88,7 +96,7 @@ class MovieLogTextFormField extends StatelessWidget {
                         : AppTextStyles.inputHint)
                     .copyWith(fontWeight: hintFontWeight),
             filled: true,
-            fillColor: showError
+            fillColor: hasError
                 ? AppColors.errorContainer
                 : AppColors.statBackground,
             contentPadding: const EdgeInsets.symmetric(
@@ -137,7 +145,7 @@ class MovieLogTextFormField extends StatelessWidget {
   }
 
   Widget? _buildSuffixIcon() {
-    if (showError) {
+    if (showError || externalErrorText != null) {
       return _StatusIcon(
         assetPath: 'assets/icons/error.svg',
         color: AppColors.error,

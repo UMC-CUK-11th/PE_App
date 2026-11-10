@@ -12,3 +12,8 @@ spring:
 
 server:
   port: 3036
+
+movie:
+  jwt:
+    secret: ${JWT_SECRET:}
+    access-expiration: ${JWT_ACCESS_EXPIRATION:3600}

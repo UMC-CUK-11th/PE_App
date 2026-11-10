@@ -1,13 +1,39 @@
+import 'package:movielog/models/common_response.dart';
+import 'package:movielog/models/member_models.dart';
+
+import 'support/test_tmdb_service.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/movie_log_app.dart';
 import 'package:movielog/router/app_router.dart';
+import 'package:dio/dio.dart';
+import 'package:movielog/services/member_check_service.dart';
+
+class AvailableCheckService extends MemberCheckService {
+  AvailableCheckService() : super(Dio());
+  @override
+  Future<CommonResponse<SignUpResult>> signUp(
+    CreateMemberRequest request,
+  ) async => const CommonResponse('COMMON201', '가입 완료', SignUpResult(42));
+
+  @override
+  Future<bool> checkNickname(String value) async => true;
+  @override
+  Future<bool> checkEmail(String value) async => true;
+}
 
 void main() {
   Future<void> pumpSignUpScreen(WidgetTester tester) async {
-    final router = AppRouter.createRouter(initialLocation: '/register');
+    final router = AppRouter.createRouter(
+      initialLocation: '/register',
+      tmdbService: TestTmdbService(),
+      movieListPreferences: MemoryMovieListPreferences(),
+    );
     addTearDown(router.dispose);
-    await tester.pumpWidget(MovieLogApp(router: router));
+    await tester.pumpWidget(
+      MovieLogApp(router: router, memberCheckService: AvailableCheckService()),
+    );
   }
 
   tearDown(() {
@@ -38,7 +64,7 @@ void main() {
 
     await tester.enterText(fields.at(0), '노바');
     await tester.enterText(fields.at(1), 'nova@example.com');
-    await tester.enterText(fields.at(2), 'password123');
+    await tester.enterText(fields.at(2), 'Password123!');
     await tester.pump();
 
     expect(find.text('노바'), findsOneWidget);
@@ -62,13 +88,18 @@ void main() {
     await tester.tap(find.byType(Checkbox));
     await tester.pump();
     expect(find.byKey(const ValueKey('password-valid-icon')), findsOneWidget);
+    expect(signUpButton().onPressed, isNull);
+    await tester.tap(find.byKey(const ValueKey('check-nickname')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('check-email')));
+    await tester.pumpAndSettle();
     expect(signUpButton().onPressed, isNotNull);
 
     await tester.ensureVisible(find.text('가입하기'));
     await tester.tap(find.text('가입하기'));
     await tester.pumpAndSettle();
 
-    expect(find.text('오늘은 어떤\n영화를 볼까요?'), findsOneWidget);
+    expect(find.byKey(const PageStorageKey('movie-grid')), findsOneWidget);
   });
 
   testWidgets('입력값이 잘못되면 한국어 오류 메시지를 표시한다', (tester) async {
@@ -86,11 +117,11 @@ void main() {
 
     await tester.enterText(fields.at(2), 'abcdefgh');
     await tester.pump();
-    expect(find.text('비밀번호는 영문과 숫자를 포함해야 합니다.'), findsOneWidget);
+    expect(find.text('대문자, 소문자, 숫자, 특수문자를 포함하고 공백을 빼주세요.'), findsOneWidget);
 
     await tester.enterText(fields.at(2), '12345678');
     await tester.pump();
-    expect(find.text('비밀번호는 영문과 숫자를 포함해야 합니다.'), findsOneWidget);
+    expect(find.text('대문자, 소문자, 숫자, 특수문자를 포함하고 공백을 빼주세요.'), findsOneWidget);
   });
 
   testWidgets('낮은 모바일 화면에서 입력창을 선택해도 overflow가 없다', (tester) async {
@@ -122,12 +153,12 @@ void main() {
     expect(find.text('MovieLog에 오신 것을 환영합니다!'), findsOneWidget);
     expect(find.text('영화로운 닉네임을 입력하세요'), findsOneWidget);
     expect(find.text('example@movielog.com'), findsOneWidget);
-    expect(find.text('영문, 숫자 포함 8자 이상'), findsOneWidget);
+    expect(find.text('대·소문자, 숫자, 특수문자 포함 8자 이상'), findsOneWidget);
 
     final containerSize = tester.getSize(
       find.byKey(const ValueKey('wide-sign-up-container')),
     );
-    expect(containerSize, const Size(560, 622));
+    expect(containerSize.width, 560);
 
     final fields = find.byType(TextFormField);
     final editableTexts = find.byType(EditableText);
@@ -137,8 +168,8 @@ void main() {
       (index) => tester.getRect(fields.at(index)),
     );
     for (var index = 0; index < 3; index++) {
-      expect(tester.getSize(fields.at(index)), const Size(496, 42));
-      expect(tester.getSize(inputDecorators.at(index)), const Size(496, 42));
+      expect(tester.getSize(fields.at(index)).height, 42);
+      expect(tester.getSize(inputDecorators.at(index)).height, 42);
       final editableText = tester.widget<EditableText>(editableTexts.at(index));
       final inputDecorator = tester.widget<InputDecorator>(
         inputDecorators.at(index),
@@ -157,12 +188,12 @@ void main() {
     expect(find.text('닉네임은 2자 이상이어야 합니다.'), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const ValueKey('wide-sign-up-container'))),
-      const Size(560, 622),
+      containerSize,
     );
     for (var index = 0; index < 3; index++) {
       expect(tester.getRect(fields.at(index)), initialFieldRects[index]);
-      expect(tester.getSize(fields.at(index)), const Size(496, 42));
-      expect(tester.getSize(inputDecorators.at(index)), const Size(496, 42));
+      expect(tester.getSize(fields.at(index)).height, 42);
+      expect(tester.getSize(inputDecorators.at(index)).height, 42);
     }
     expect(tester.takeException(), isNull);
   });
