@@ -1,5 +1,7 @@
 # 6주차 — 회원가입과 평점 CRUD
 
+현재 week07 브랜치의 실행 방법과 JWT API는 [7주차 문서](WEEK07.md)를 참고하세요. 아래는 week06의 기록입니다.
+
 Java 21 / Spring Boot 3.5.0 / MySQL. 기존 조회 API와 CORS 정책은 유지합니다.
 
 ## 실행

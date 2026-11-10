@@ -8,3 +8,9 @@ spring:
     hibernate:
       ddl-auto: create-drop
     open-in-view: false
+
+movie:
+  jwt:
+    # 테스트 프로필에서만 쓰는 32바이트 고정값입니다.
+    secret: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+    access-expiration: 60

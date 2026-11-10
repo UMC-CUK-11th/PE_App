@@ -11,6 +11,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -66,6 +67,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> notFound(NoResourceFoundException error) {
         return response(404, "COMMON404", "요청 경로를 찾을 수 없습니다.");
     }
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> methodNotAllowed(HttpRequestMethodNotSupportedException error) {
+        return ResponseEntity.status(405).headers(error.getHeaders())
+            .body(ApiResponse.error("COMMON405", "지원하지 않는 요청 방식입니다."));
+    }
     /**
      * 저장 중 발생한 중복 키 위반을 회원 또는 평점의 409 오류로 변환합니다.
      * MySQL 1062와 H2 SQLState 23505를 중복으로 판별하며, 그 외 무결성 오류는 500입니다.
@@ -96,7 +102,14 @@ public class GlobalExceptionHandler {
                 return response(409, "MEMBER4092", "이미 사용 중인 닉네임입니다.");
             return response(409, "MEMBER4090", "이미 사용 중인 회원 정보입니다.");
         }
-        return response(409, "RATING4091", "이미 이 영화에 평점을 남기셨습니다.");
+        if (request.getAttribute("profile.nickname") instanceof String nickname
+            && (constraint.contains("nickname") || memberRepository.existsByNickname(nickname))) {
+            return response(409, "MEMBER409_1", "이미 사용 중인 닉네임입니다.");
+        }
+        if (constraint.contains("rating_member_movie")) {
+            return response(409, "RATING409_1", "이미 이 영화에 평점을 남기셨습니다.");
+        }
+        return response(500, "COMMON500", "저장 중 오류가 발생했습니다.");
     }
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> unexpected(Exception error) {

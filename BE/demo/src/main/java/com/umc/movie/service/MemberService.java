@@ -39,4 +39,30 @@ public class MemberService {
         Member member = new Member(request.email(), passwordEncoder.encode(request.password()), request.nickname());
         return SignupResponse.from(memberRepository.saveAndFlush(member));
     }
+
+    @Transactional(readOnly = true)
+    public MemberInfoResponse getMe(long memberId) {
+        return MemberInfoResponse.from(requireMember(memberId));
+    }
+
+    /** 현재 닉네임과 같으면 그대로 반환하며 다른 회원의 닉네임은 거절합니다. */
+    @Transactional
+    public MemberInfoResponse updateNickname(long memberId, String nickname) {
+        Member member = requireMember(memberId);
+        if (member.getNickname().equals(nickname)) {
+            return MemberInfoResponse.from(member);
+        }
+        if (memberRepository.existsByNickname(nickname)) {
+            throw new ApiException(HttpStatus.CONFLICT, "MEMBER409_1", "이미 사용 중인 닉네임입니다.");
+        }
+        member.rename(nickname);
+        memberRepository.flush();
+        return MemberInfoResponse.from(member);
+    }
+
+    private Member requireMember(long memberId) {
+        return memberRepository.findById(memberId)
+            .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND,
+                "MEMBER404_1", "해당 회원을 찾을 수 없습니다."));
+    }
 }
