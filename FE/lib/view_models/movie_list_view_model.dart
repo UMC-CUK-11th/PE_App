@@ -49,7 +49,22 @@ class MovieListViewModel extends ChangeNotifier {
       final saved = await preferences.read();
       if (_disposed) return;
       sortOption = saved.sortOption;
-      final restored = saved.genres.map(int.tryParse).whereType<int>().toList();
+      var restored = <int>[];
+      if (genreIds == null) {
+        final hasLegacyNames = saved.genres.any((g) => int.tryParse(g) == null);
+        final namesToIds = <String, int>{};
+        if (hasLegacyNames) {
+          final available = await _service.fetchGenres(
+            cancelToken: _cancelToken,
+          );
+          if (_disposed) return;
+          namesToIds.addEntries(available.map((g) => MapEntry(g.name, g.id)));
+        }
+        restored = saved.genres
+            .map((g) => int.tryParse(g) ?? namesToIds[g])
+            .whereType<int>()
+            .toList();
+      }
       selectedGenreIds = _normalize(genreIds ?? restored);
     } catch (_) {
       selectedGenreIds = _normalize(genreIds);
