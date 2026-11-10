@@ -165,7 +165,7 @@ void main() {
   test('평점은 회원 1번 조회, 영화 중복 요청 제거, 상세 실패 시에도 보존한다', () async {
     final service = RatingsService()..items = [rating(2), rating(1)];
     final movies = MoviesService()..fail = true;
-    final vm = MyRatingsViewModel(service, movies);
+    final vm = MyRatingsViewModel(service, movies, memberId: 1);
     addTearDown(vm.dispose);
     await vm.load();
     expect(service.memberId, 1);
@@ -199,7 +199,7 @@ void main() {
     tester,
   ) async {
     final service = RatingsService()..pending = Completer<List<RatingDto>>();
-    final vm = MyRatingsViewModel(service, MoviesService());
+    final vm = MyRatingsViewModel(service, MoviesService(), memberId: 1);
     addTearDown(vm.dispose);
     final loading = vm.load();
     await tester.pumpWidget(

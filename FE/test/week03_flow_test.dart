@@ -1,3 +1,4 @@
+import 'package:movielog/view_models/learning_member_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,7 +19,11 @@ void main() {
       movieListPreferences: const _MemoryMovieListPreferences(),
     );
     addTearDown(router.dispose);
-    await tester.pumpWidget(MovieLogApp(router: router));
+    final session = LearningMemberSession()..start(42);
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MovieLogApp(router: router, learningSession: session),
+    );
     await tester.pumpAndSettle();
     return router;
   }
@@ -160,7 +165,7 @@ void main() {
     expect(tester.widget<ElevatedButton>(confirmButton).onPressed, isNull);
 
     final ratingBar = find.byType(RatingBar);
-    tester.widget<RatingBar>(ratingBar).onRatingUpdate(3.5);
+    tester.widget<RatingBar>(ratingBar).onRatingUpdate(3);
     await tester.pumpAndSettle();
     expect(find.text('다시 선택하기'), findsOneWidget);
     expect(tester.widget<ElevatedButton>(confirmButton).onPressed, isNotNull);

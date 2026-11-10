@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'services/member_check_service.dart';
 import 'services/movie_log_client.dart';
 import 'view_models/signup_view_model.dart';
+import 'view_models/learning_member_session.dart';
 import 'widgets/movielog_button.dart';
 
 import 'theme/app_colors.dart';
@@ -74,10 +75,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final password = value ?? '';
     if (password.isEmpty) return '비밀번호를 입력해주세요.';
     if (password.length < 8) return '비밀번호는 8자 이상이어야 합니다.';
-    final hasEnglishLetter = RegExp(r'[A-Za-z]').hasMatch(password);
-    final hasNumber = RegExp(r'[0-9]').hasMatch(password);
-    if (!hasEnglishLetter || !hasNumber) {
-      return '비밀번호는 영문과 숫자를 포함해야 합니다.';
+    if (!RegExp(r'[a-z]').hasMatch(password) ||
+        !RegExp(r'[A-Z]').hasMatch(password) ||
+        !RegExp(r'[0-9]').hasMatch(password) ||
+        !RegExp(r'[!@#$%^&*]').hasMatch(password) ||
+        RegExp(r'\s').hasMatch(password)) {
+      return '대문자, 소문자, 숫자, 특수문자를 포함하고 공백을 빼주세요.';
     }
     return null;
   }
@@ -93,15 +96,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
       _isEmailValid &&
       _isPasswordValid &&
       _agreedToTerms &&
-      _viewModel.bothAvailable;
+      _viewModel.bothAvailable &&
+      !_viewModel.isSubmitting;
 
-  void _submit() {
+  Future<void> _submit() async {
     final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid || !_canSubmit) return;
-
     FocusScope.of(context).unfocus();
-    debugPrint('학습용 Form 확인 완료: 회원가입 API는 호출하지 않습니다.');
-    context.go('/home');
+    final session = context.read<LearningMemberSession>();
+    final id = await _viewModel.submit(_passwordController.text);
+    if (!mounted) return;
+    if (id != null) {
+      session.start(id);
+      context.go('/movies');
+    } else if (_viewModel.snackbarMessage case final message?) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   void _handleAgreementChanged(bool? value) {
@@ -113,13 +124,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: _viewModel,
-      builder: (context, child) => LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth >= 700) {
-            return _buildWideLayout();
-          }
-          return _buildMobileLayout();
-        },
+      builder: (context, child) => PopScope(
+        canPop: !_viewModel.isSubmitting,
+        child: IgnorePointer(
+          ignoring: _viewModel.isSubmitting,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth >= 700) {
+                return _buildWideLayout();
+              }
+              return _buildMobileLayout();
+            },
+          ),
+        ),
       ),
     );
   }
@@ -165,6 +182,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           isWide: false,
                           agreedToTerms: _agreedToTerms,
                           canSubmit: _canSubmit,
+                          isSubmitting: _viewModel.isSubmitting,
                           onAgreementChanged: _handleAgreementChanged,
                           onSubmit: _submit,
                         ),
@@ -210,6 +228,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           isWide: true,
                           agreedToTerms: _agreedToTerms,
                           canSubmit: _canSubmit,
+                          isSubmitting: _viewModel.isSubmitting,
                           onAgreementChanged: _handleAgreementChanged,
                           onSubmit: _submit,
                         ),
@@ -288,6 +307,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             label: '닉네임',
             hintText: isWide ? '영화로운 닉네임을 입력하세요' : '닉네임을 입력해주세요',
             controller: _nicknameController,
+            readOnly: _viewModel.isSubmitting,
             focusNode: _nicknameFocusNode,
             validator: _validateNickname,
             onChanged: (value) {
@@ -315,6 +335,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             label: isWide ? '이메일 주소' : '이메일',
             hintText: isWide ? 'example@movielog.com' : '이메일 주소를 입력해주세요',
             controller: _emailController,
+            readOnly: _viewModel.isSubmitting,
             focusNode: _emailFocusNode,
             validator: _validateEmail,
             onChanged: (value) {
@@ -334,11 +355,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
         SizedBox(height: isWide ? 4 : 16),
         MovieLogTextFormField(
           label: '비밀번호',
-          hintText: isWide ? '영문, 숫자 포함 8자 이상' : '비밀번호를 입력해주세요',
+          hintText: isWide ? '대·소문자, 숫자, 특수문자 포함 8자 이상' : '비밀번호를 입력해주세요',
           controller: _passwordController,
+          readOnly: _viewModel.isSubmitting,
           focusNode: _passwordFocusNode,
           validator: _validatePassword,
+          externalErrorText: _viewModel.passwordErrorText,
           onChanged: (_) {
+            _viewModel.onPasswordChanged();
             setState(() => _passwordTouched = true);
           },
           onFieldSubmitted: (_) => FocusScope.of(context).unfocus(),
@@ -397,6 +421,7 @@ class _SignUpActions extends StatelessWidget {
     required this.isWide,
     required this.agreedToTerms,
     required this.canSubmit,
+    required this.isSubmitting,
     required this.onAgreementChanged,
     required this.onSubmit,
   });
@@ -404,6 +429,7 @@ class _SignUpActions extends StatelessWidget {
   final bool isWide;
   final bool agreedToTerms;
   final bool canSubmit;
+  final bool isSubmitting;
   final ValueChanged<bool?> onAgreementChanged;
   final VoidCallback onSubmit;
 
@@ -449,10 +475,11 @@ class _SignUpActions extends StatelessWidget {
           width: double.infinity,
           height: 56,
           onPressed: canSubmit ? onSubmit : null,
+          isLoading: isSubmitting,
         ),
         const SizedBox(height: 8),
         const Text(
-          '학습용 화면으로 실제 계정은 생성되지 않습니다.',
+          '워크북 실습 서버에 회원을 등록합니다.',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
         ),

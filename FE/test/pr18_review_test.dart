@@ -118,7 +118,7 @@ void main() {
           .checkEmail(' user+tag@example.com ');
       expect(
         adapter.requests.single.path,
-        '/v5/members/email/${Uri.encodeComponent('user+tag@example.com')}',
+        '/v6/members/email/${Uri.encodeComponent('user+tag@example.com')}',
       );
       expect(result, available);
     }
@@ -148,7 +148,7 @@ void main() {
     addTearDown(dio.close);
     final service = RatingApiService(dio);
     final items = await service.fetchMyRatings(42);
-    expect(adapter.requests.single.path, '/v5/members/42/ratings');
+    expect(adapter.requests.single.path, '/v6/members/42/ratings');
     expect(items.map((r) => r.ratingId), [9, 8]);
     expect(items.first.movieId, 550);
     expect(items.first.comment, isNull);
@@ -227,7 +227,7 @@ void main() {
     final ratings = RatingsService()
       ..items = List.generate(12, (i) => _rating(i + 1));
     final movies = _PendingMovies();
-    final vm = MyRatingsViewModel(ratings, movies);
+    final vm = MyRatingsViewModel(ratings, movies, memberId: 1);
     addTearDown(vm.dispose);
     final loading = vm.load();
     await _flush();
@@ -250,7 +250,7 @@ void main() {
     final ratings = RatingsService()
       ..items = List.generate(12, (i) => _rating(i + 1));
     final movies = _PendingMovies();
-    final vm = MyRatingsViewModel(ratings, movies);
+    final vm = MyRatingsViewModel(ratings, movies, memberId: 1);
     final loading = vm.load();
     await _flush();
     vm.dispose();
@@ -330,7 +330,7 @@ void main() {
 
   testWidgets('재조회 중 기존 목록과 RefreshIndicator를 유지한다', (tester) async {
     final ratings = RatingsService()..items = [_rating(1)];
-    final vm = MyRatingsViewModel(ratings, MoviesService());
+    final vm = MyRatingsViewModel(ratings, MoviesService(), memberId: 1);
     addTearDown(vm.dispose);
     await vm.load();
     await tester.pumpWidget(
@@ -363,7 +363,7 @@ void main() {
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), '홀란드');
     await tester.enterText(fields.at(1), 'preview@example.com');
-    await tester.enterText(fields.at(2), 'password123');
+    await tester.enterText(fields.at(2), 'Password123!');
     await tester.tap(find.byKey(const ValueKey('check-nickname')));
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();

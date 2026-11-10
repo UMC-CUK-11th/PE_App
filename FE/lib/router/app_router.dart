@@ -12,6 +12,7 @@ import '../profile_screen.dart';
 import '../screens/my_ratings_screen.dart';
 import '../services/rating_api_service.dart';
 import '../view_models/my_ratings_view_model.dart';
+import '../view_models/learning_member_session.dart';
 import '../screens/home_screen.dart';
 import '../screens/main_screen.dart';
 import '../screens/movie_detail_screen.dart';
@@ -96,6 +97,7 @@ abstract final class AppRouter {
             create: (context) => MyRatingsViewModel(
               context.read<RatingApiService>(),
               tmdbService ?? context.read<TmdbMovieService>(),
+              memberId: context.read<LearningMemberSession>().memberId,
             )..load(),
             child: const MyRatingsScreen(),
           ),
