@@ -8,3 +8,8 @@ spring:
     hibernate:
       ddl-auto: create-drop
     open-in-view: false
+
+app:
+  jwt:
+    secret: test-secret-key-for-umc11th-movie-api
+    access-expiration-seconds: 3600

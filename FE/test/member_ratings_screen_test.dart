@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/app/movie_log_app.dart';
 import 'package:movielog/data/services/fake_movie_service.dart';
 import 'package:movielog/data/services/member_api_service.dart';
+import 'package:movielog/data/services/learning_member_session.dart';
 import 'package:movielog/data/services/tmdb_movie_service.dart';
 import 'package:movielog/screens/member_ratings_screen.dart';
 import 'package:movielog/router/app_router.dart';
@@ -23,6 +24,7 @@ void main() {
       movieService: const FakeMovieService(delay: Duration.zero),
       memberApiService: memberService,
       tmdbMovieService: tmdbService,
+      memberSession: LearningMemberSession(initialMemberId: 1),
     );
     addTearDown(router.dispose);
     await tester.pumpWidget(MovieLogApp(router: router));
@@ -133,6 +135,80 @@ void main() {
     expect(viewModel.items, hasLength(101));
     expect(viewModel.state, MemberRatingsLoadState.success);
   });
+
+  test('다중 삭제는 성공한 항목만 선택에서 제거하고 실패 항목을 유지한다', () async {
+    final deleted = <int>[];
+    final memberDio = Dio(BaseOptions(baseUrl: 'http://localhost'));
+    memberDio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (options.method == 'DELETE') {
+            final ratingId = int.parse(options.path.split('/').last);
+            if (ratingId == 2) {
+              handler.reject(
+                DioException(
+                  requestOptions: options,
+                  response: Response<dynamic>(
+                    requestOptions: options,
+                    statusCode: 404,
+                    data: {
+                      'isSuccess': false,
+                      'code': 'COMMON404',
+                      'message': '존재하지 않는 평점입니다.',
+                      'result': null,
+                    },
+                  ),
+                ),
+              );
+              return;
+            }
+            deleted.add(ratingId);
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: options,
+                statusCode: 204,
+                data: null,
+              ),
+            );
+            return;
+          }
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: options,
+              statusCode: 200,
+              data: [_ratingJson(movieId: 20, ratingId: 2)],
+            ),
+          );
+        },
+      ),
+    );
+    final viewModel = MemberRatingsViewModel(
+      memberId: 1,
+      memberApiService: MemberApiService(memberDio),
+      movieService: TmdbMovieService(
+        _dio(
+          (options) => {
+            'id': int.parse(options.path.split('/').last),
+            'title': '영화',
+            'vote_average': 0,
+            'overview': '',
+            'poster_path': null,
+          },
+        ),
+      ),
+    );
+    addTearDown(viewModel.dispose);
+    viewModel
+      ..isSelectionMode = true
+      ..selectedRatingIds.addAll([1, 2]);
+
+    final failed = await viewModel.deleteSelectedRatings();
+
+    expect(deleted, [1]);
+    expect(failed, 1);
+    expect(viewModel.selectedRatingIds, {2});
+    expect(viewModel.message, contains('1개 항목'));
+  });
 }
 
 Widget _app(MemberRatingsViewModel viewModel) {
@@ -142,8 +218,8 @@ Widget _app(MemberRatingsViewModel viewModel) {
   );
 }
 
-Map<String, dynamic> _ratingJson({required int movieId}) => {
-  'ratingId': 1,
+Map<String, dynamic> _ratingJson({required int movieId, int ratingId = 1}) => {
+  'ratingId': ratingId,
   'movieId': movieId,
   'score': 5,
   'comment': '최고의 영화!',

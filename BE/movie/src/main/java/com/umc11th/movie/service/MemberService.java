@@ -35,6 +35,16 @@ public class MemberService {
         return new EmailCheckResponse(!memberRepository.existsByEmail(email));
     }
 
+    @Transactional(readOnly = true)
+    public MemberResponse getMe(Long memberId) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "존재하지 않는 유저입니다."
+                ));
+        return MemberResponse.from(member);
+    }
+
     @Transactional
     public MemberResponse signUp(SignUpRequest request) {
         if (request.password().getBytes(StandardCharsets.UTF_8).length

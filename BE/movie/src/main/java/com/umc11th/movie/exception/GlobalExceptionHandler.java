@@ -18,6 +18,12 @@ public class GlobalExceptionHandler {
     private static final String NICKNAME_CONSTRAINT = "uk_member_nickname";
     private static final String RATING_CONSTRAINT = "uk_rating_member_movie";
 
+    @ExceptionHandler(AuthException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAuth(AuthException exception) {
+        return ResponseEntity.status(exception.getStatus())
+                .body(ApiResponse.failure(exception.getCode(), exception.getMessage()));
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleUnreadableMessage(
             HttpMessageNotReadableException exception

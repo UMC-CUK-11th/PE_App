@@ -4,6 +4,7 @@ import com.umc11th.movie.dto.CreateRatingRequest;
 import com.umc11th.movie.dto.UpdateRatingRequest;
 import com.umc11th.movie.entity.Member;
 import com.umc11th.movie.entity.Rating;
+import com.umc11th.movie.exception.AuthException;
 import com.umc11th.movie.repository.MemberRepository;
 import com.umc11th.movie.repository.RatingRepository;
 import org.junit.jupiter.api.Test;
@@ -82,9 +83,9 @@ class RatingServiceTest {
                 1L,
                 new UpdateRatingRequest(4, "수정 시도")
         ))
-                .isInstanceOf(ResponseStatusException.class)
+                .isInstanceOf(AuthException.class)
                 .satisfies(exception -> assertThat(
-                        ((ResponseStatusException) exception).getStatusCode().value()
+                        ((AuthException) exception).getStatus().value()
                 ).isEqualTo(403));
     }
 
