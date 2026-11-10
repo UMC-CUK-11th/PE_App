@@ -38,7 +38,7 @@ void main() {
 
     expect(find.text('회원가입'), findsOneWidget);
     expect(find.byType(TextFormField), findsNWidgets(3));
-    expect(find.byTooltip('뒤로 가기'), findsNothing);
+    expect(find.byTooltip('뒤로 가기'), findsOneWidget);
   });
 
   testWidgets('NavigationBar로 홈, 영화, 마이 화면을 전환한다', (tester) async {
