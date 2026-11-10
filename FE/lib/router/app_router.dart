@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../data/services/fake_movie_service.dart';
 import '../data/services/legacy_movie_catalog_adapter.dart';
 import '../data/services/member_api_service.dart';
+import '../data/services/learning_member_session.dart';
 import '../data/services/movie_catalog_service.dart';
 import '../data/services/movie_list_preferences.dart';
 import '../data/services/tmdb_movie_service.dart';
@@ -18,6 +19,7 @@ import '../screens/register_screen.dart';
 import '../screens/start_screen.dart';
 import '../screens/week05_api_screen.dart';
 import '../view_models/member_ratings_view_model.dart';
+import '../view_models/movie_detail_view_model.dart';
 
 abstract final class AppRouter {
   static GoRouter createRouter({
@@ -26,6 +28,7 @@ abstract final class AppRouter {
     MovieCatalogService? catalogService,
     MemberApiService? memberApiService,
     TmdbMovieService? tmdbMovieService,
+    LearningMemberSession? memberSession,
     MovieListPreferences movieListPreferences =
         const SharedPreferencesMovieListPreferences(),
   }) {
@@ -41,6 +44,7 @@ abstract final class AppRouter {
         (resolvedCatalogService is TmdbMovieService
             ? resolvedCatalogService
             : TmdbMovieService.fromEnvironment());
+    final resolvedMemberSession = memberSession ?? LearningMemberSession();
     return GoRouter(
       initialLocation: initialLocation,
       routes: [
@@ -50,18 +54,24 @@ abstract final class AppRouter {
         ),
         GoRoute(
           path: '/register',
-          builder: (context, state) =>
-              RegisterScreen(apiService: resolvedMemberApiService),
+          builder: (context, state) => RegisterScreen(
+            apiService: resolvedMemberApiService,
+            session: resolvedMemberSession,
+          ),
         ),
         GoRoute(
           path: '/my/ratings',
-          builder: (context, state) => MemberRatingsScreen(
-            viewModel: MemberRatingsViewModel(
-              memberId: 1,
-              memberApiService: resolvedMemberApiService,
-              movieService: resolvedTmdbMovieService,
-            ),
-          ),
+          builder: (context, state) {
+            final memberId = resolvedMemberSession.memberId;
+            if (memberId == null) return const _MemberRequiredScreen();
+            return MemberRatingsScreen(
+              viewModel: MemberRatingsViewModel(
+                memberId: memberId,
+                memberApiService: resolvedMemberApiService,
+                movieService: resolvedTmdbMovieService,
+              ),
+            );
+          },
         ),
         StatefulShellRoute.indexedStack(
           builder: (context, state, navigationShell) {
@@ -116,6 +126,9 @@ abstract final class AppRouter {
               key: ValueKey(id),
               movieId: id,
               catalogService: resolvedCatalogService,
+              initialMovie: state.extra is Movie ? state.extra! as Movie : null,
+              memberApiService: resolvedMemberApiService,
+              memberSession: resolvedMemberSession,
             );
           },
         ),
@@ -137,18 +150,26 @@ class _MovieDetailLoader extends StatefulWidget {
   const _MovieDetailLoader({
     required this.movieId,
     required this.catalogService,
+    required this.memberApiService,
+    required this.memberSession,
+    this.initialMovie,
     super.key,
   });
 
   final int movieId;
   final MovieCatalogService catalogService;
+  final MemberApiService memberApiService;
+  final LearningMemberSession memberSession;
+  final Movie? initialMovie;
 
   @override
   State<_MovieDetailLoader> createState() => _MovieDetailLoaderState();
 }
 
 class _MovieDetailLoaderState extends State<_MovieDetailLoader> {
-  late Future<Movie?> _movie = _loadMovie();
+  late Future<Movie?> _movie = widget.initialMovie == null
+      ? _loadMovie()
+      : Future.value(widget.initialMovie);
 
   Future<Movie?> _loadMovie() async {
     var genreNames = <int, String>{};
@@ -193,8 +214,38 @@ class _MovieDetailLoaderState extends State<_MovieDetailLoader> {
         if (movie == null) {
           return const _MovieNotFoundScreen();
         }
-        return MovieDetailScreen(movie: movie);
+        return MovieDetailScreen(
+          viewModel: MovieDetailViewModel(
+            ratingService: widget.memberApiService,
+            memberId: widget.memberSession.memberId,
+            movie: movie,
+          ),
+        );
       },
+    );
+  }
+}
+
+class _MemberRequiredScreen extends StatelessWidget {
+  const _MemberRequiredScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('내가 등록한 평점')),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('먼저 회원가입을 완료해 주세요.'),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => context.go('/register'),
+              child: const Text('회원가입으로 이동'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
