@@ -18,7 +18,6 @@ import '../screens/profile_screen.dart';
 import '../screens/register_screen.dart';
 import '../screens/start_screen.dart';
 import '../screens/week05_api_screen.dart';
-import '../view_models/member_ratings_view_model.dart';
 import '../view_models/movie_detail_view_model.dart';
 
 abstract final class AppRouter {
@@ -37,14 +36,16 @@ abstract final class AppRouter {
         LegacyMovieCatalogAdapter(
           movieService ?? const FakeMovieService(delay: Duration.zero),
         );
+    final resolvedMemberSession = memberSession ?? LearningMemberSession();
     final resolvedMemberApiService =
-        memberApiService ?? MemberApiService.fromEnvironment();
+        memberApiService ??
+        MemberApiService.fromEnvironment(session: resolvedMemberSession);
+    resolvedMemberApiService.bindSession(resolvedMemberSession);
     final resolvedTmdbMovieService =
         tmdbMovieService ??
         (resolvedCatalogService is TmdbMovieService
             ? resolvedCatalogService
             : TmdbMovieService.fromEnvironment());
-    final resolvedMemberSession = memberSession ?? LearningMemberSession();
     return GoRouter(
       initialLocation: initialLocation,
       routes: [
@@ -65,11 +66,9 @@ abstract final class AppRouter {
             final memberId = resolvedMemberSession.memberId;
             if (memberId == null) return const _MemberRequiredScreen();
             return MemberRatingsScreen(
-              viewModel: MemberRatingsViewModel(
-                memberId: memberId,
-                memberApiService: resolvedMemberApiService,
-                movieService: resolvedTmdbMovieService,
-              ),
+              memberId: memberId,
+              memberApiService: resolvedMemberApiService,
+              movieService: resolvedTmdbMovieService,
             );
           },
         ),

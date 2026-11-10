@@ -191,7 +191,14 @@ void main() {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          final Map<String, dynamic> data = options.method == 'POST'
+          final Map<String, dynamic> data = options.path == '/auth/login'
+              ? {
+                  'isSuccess': true,
+                  'code': 'COMMON200',
+                  'message': '로그인 성공',
+                  'result': {'accessToken': 'test-access-token'},
+                }
+              : options.method == 'POST'
               ? {
                   'isSuccess': true,
                   'code': 'COMMON201',
@@ -206,7 +213,7 @@ void main() {
           handler.resolve(
             Response<dynamic>(
               requestOptions: options,
-              statusCode: options.method == 'POST' ? 201 : 200,
+              statusCode: options.path == '/members' ? 201 : 200,
               data: data,
             ),
           );
@@ -250,6 +257,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(session.memberId, 27);
+    expect(session.accessToken, 'test-access-token');
+    expect(session.isAuthenticated, isTrue);
     expect(router.routeInformationProvider.value.uri.path, '/movies');
   });
 }

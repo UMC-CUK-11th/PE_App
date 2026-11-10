@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/data/services/member_api_service.dart';
+import 'package:movielog/data/services/learning_member_session.dart';
 import 'package:movielog/data/models/sign_up_models.dart';
 import 'package:movielog/data/models/rating_requests.dart';
 
@@ -76,6 +77,10 @@ void main() {
 
   test('평점 등록·수정·삭제는 movieId와 ratingId를 구분한다', () async {
     final requests = <RequestOptions>[];
+    final session = LearningMemberSession(
+      initialMemberId: 7,
+      initialAccessToken: 'test-access-token',
+    );
     final service = MemberApiService(
       _fakeDio((options) {
         requests.add(options);
@@ -97,24 +102,27 @@ void main() {
         }
         return null;
       }),
+      authSession: session,
     );
 
     await service.createRating(
-      memberId: 7,
       request: const CreateRatingRequest(movieId: 550, score: 5, comment: '최고'),
     );
     await service.updateRating(
-      memberId: 7,
       ratingId: 31,
       request: const UpdateRatingRequest(score: 4, comment: ''),
     );
-    await service.deleteRating(memberId: 7, ratingId: 31);
+    await service.deleteRating(ratingId: 31);
 
-    expect(requests[0].path, '/members/7/ratings');
+    expect(requests[0].path, '/ratings');
     expect(requests[0].data, containsPair('movieId', 550));
-    expect(requests[1].path, '/members/7/ratings/31');
+    expect(requests[0].headers['Authorization'], 'Bearer test-access-token');
+    expect(requests[1].path, '/ratings/31');
     expect(requests[1].data, containsPair('comment', null));
+    expect(requests[1].headers['Authorization'], 'Bearer test-access-token');
+    expect(requests[2].path, '/ratings/31');
     expect(requests[2].method, 'DELETE');
+    expect(requests[2].headers['Authorization'], 'Bearer test-access-token');
   });
 }
 

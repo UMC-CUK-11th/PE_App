@@ -35,7 +35,6 @@ class MovieDetailViewModel extends ChangeNotifier {
     _notify();
     try {
       await ratingService.createRating(
-        memberId: id,
         request: CreateRatingRequest(
           movieId: movie.id,
           score: score,

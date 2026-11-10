@@ -44,8 +44,19 @@ class SignUpViewModel extends ChangeNotifier {
       if (result == null) {
         throw const FormatException('회원가입 응답에 회원 ID가 없습니다.');
       }
+      final loginResponse = await service.login(
+        email: request.email,
+        password: request.password,
+      );
+      final loginResult = loginResponse.result;
+      if (loginResult == null || loginResult.accessToken.isEmpty) {
+        throw const FormatException('로그인 응답에 access token이 없습니다.');
+      }
       createdMemberId = result.memberId;
-      session.setMemberId(result.memberId);
+      session.setAuthenticatedMember(
+        memberId: result.memberId,
+        accessToken: loginResult.accessToken,
+      );
       submitStatus = SubmitStatus.success;
     } on DioException catch (error) {
       submitStatus = SubmitStatus.error;

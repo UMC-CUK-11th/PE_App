@@ -104,7 +104,6 @@ class MemberRatingsViewModel extends ChangeNotifier {
     _notifyListeners();
     try {
       await memberApiService.updateRating(
-        memberId: memberId,
         ratingId: ratingId,
         request: UpdateRatingRequest(score: score, comment: comment),
       );
@@ -125,10 +124,7 @@ class MemberRatingsViewModel extends ChangeNotifier {
     message = null;
     _notifyListeners();
     try {
-      await memberApiService.deleteRating(
-        memberId: memberId,
-        ratingId: ratingId,
-      );
+      await memberApiService.deleteRating(ratingId: ratingId);
     } on DioException catch (error) {
       message = memberApiErrorMessage(error);
       if (_shouldRefreshAfterWriteError(error)) await load();
@@ -149,10 +145,7 @@ class MemberRatingsViewModel extends ChangeNotifier {
     try {
       for (final ratingId in selectedRatingIds.toList()) {
         try {
-          await memberApiService.deleteRating(
-            memberId: memberId,
-            ratingId: ratingId,
-          );
+          await memberApiService.deleteRating(ratingId: ratingId);
           selectedRatingIds.remove(ratingId);
           items = items
               .where((item) => item.rating.ratingId != ratingId)
@@ -186,7 +179,7 @@ class MemberRatingsViewModel extends ChangeNotifier {
 
   bool _shouldRefreshAfterWriteError(DioException error) {
     final code = memberApiErrorCode(error);
-    return code == 'COMMON403' || code == 'COMMON404';
+    return code == 'AUTH403_1' || code == 'COMMON403' || code == 'COMMON404';
   }
 
   Future<List<MemberRating>> _fetchAllRatings() async {

@@ -33,3 +33,12 @@ class SignUpResult {
   final String email;
   final String nickname;
 }
+
+class LoginResult {
+  const LoginResult({required this.accessToken});
+
+  factory LoginResult.fromJson(Map<String, dynamic> json) =>
+      LoginResult(accessToken: json['accessToken'] as String);
+
+  final String accessToken;
+}

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../data/services/member_api_service.dart';
+import '../data/services/tmdb_movie_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../view_models/member_ratings_view_model.dart';
@@ -9,24 +11,67 @@ import '../widgets/common_app_bar.dart';
 import '../widgets/rating_dialog.dart';
 
 class MemberRatingsScreen extends StatefulWidget {
-  const MemberRatingsScreen({required this.viewModel, super.key});
+  const MemberRatingsScreen({
+    this.memberId,
+    this.memberApiService,
+    this.movieService,
+    this.viewModel,
+    super.key,
+  }) : assert(
+         viewModel != null ||
+             (memberId != null &&
+                 memberApiService != null &&
+                 movieService != null),
+       );
 
-  final MemberRatingsViewModel viewModel;
+  final int? memberId;
+  final MemberApiService? memberApiService;
+  final TmdbMovieService? movieService;
+  final MemberRatingsViewModel? viewModel;
 
   @override
   State<MemberRatingsScreen> createState() => _MemberRatingsScreenState();
 }
 
 class _MemberRatingsScreenState extends State<MemberRatingsScreen> {
+  late MemberRatingsViewModel _viewModel;
+  late bool _ownsViewModel;
+
+  MemberRatingsViewModel _createViewModel() {
+    return widget.viewModel ??
+        MemberRatingsViewModel(
+          memberId: widget.memberId!,
+          memberApiService: widget.memberApiService!,
+          movieService: widget.movieService!,
+        );
+  }
+
   @override
   void initState() {
     super.initState();
-    widget.viewModel.load();
+    _viewModel = _createViewModel();
+    _ownsViewModel = widget.viewModel == null;
+    _viewModel.load();
+  }
+
+  @override
+  void didUpdateWidget(covariant MemberRatingsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final dependenciesChanged =
+        oldWidget.viewModel != widget.viewModel ||
+        oldWidget.memberId != widget.memberId ||
+        !identical(oldWidget.memberApiService, widget.memberApiService) ||
+        !identical(oldWidget.movieService, widget.movieService);
+    if (!dependenciesChanged) return;
+    if (_ownsViewModel) _viewModel.dispose();
+    _viewModel = _createViewModel();
+    _ownsViewModel = widget.viewModel == null;
+    _viewModel.load();
   }
 
   @override
   void dispose() {
-    widget.viewModel.dispose();
+    if (_ownsViewModel) _viewModel.dispose();
     super.dispose();
   }
 
@@ -38,15 +83,23 @@ class _MemberRatingsScreenState extends State<MemberRatingsScreen> {
         movieId: item.rating.movieId,
         initialScore: item.rating.score,
         initialComment: item.rating.comment,
-        onSubmit: (score, comment) => widget.viewModel.updateRating(
-          ratingId: item.rating.ratingId,
-          score: score,
-          comment: comment,
-        ),
+        onSubmit: (score, comment) async {
+          try {
+            await _viewModel.updateRating(
+              ratingId: item.rating.ratingId,
+              score: score,
+              comment: comment,
+            );
+          } on Object {
+            throw StateError(
+              _viewModel.message ?? '평점 수정에 실패했습니다. 다시 시도해 주세요.',
+            );
+          }
+        },
       ),
     );
     if (!mounted || saved != true) return;
-    _showMessage(widget.viewModel.refreshWarning ?? '평점을 수정했습니다.');
+    _showMessage(_viewModel.refreshWarning ?? '평점을 수정했습니다.');
   }
 
   Future<void> _delete(MemberRatingItem item) async {
@@ -73,9 +126,7 @@ class _MemberRatingsScreenState extends State<MemberRatingsScreen> {
                     : () async {
                         setDialogState(() => deleting = true);
                         try {
-                          await widget.viewModel.deleteRating(
-                            item.rating.ratingId,
-                          );
+                          await _viewModel.deleteRating(item.rating.ratingId);
                           if (dialogContext.mounted) {
                             Navigator.of(dialogContext).pop(true);
                           }
@@ -99,14 +150,14 @@ class _MemberRatingsScreenState extends State<MemberRatingsScreen> {
     );
     if (!mounted) return;
     if (deleted == true) {
-      _showMessage(widget.viewModel.refreshWarning ?? '평점을 삭제했습니다.');
-    } else if (widget.viewModel.message != null) {
-      _showMessage(widget.viewModel.message!);
+      _showMessage(_viewModel.refreshWarning ?? '평점을 삭제했습니다.');
+    } else if (_viewModel.message != null) {
+      _showMessage(_viewModel.message!);
     }
   }
 
   Future<void> _deleteSelected() async {
-    final count = widget.viewModel.selectedRatingIds.length;
+    final count = _viewModel.selectedRatingIds.length;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -125,12 +176,12 @@ class _MemberRatingsScreenState extends State<MemberRatingsScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    final failed = await widget.viewModel.deleteSelectedRatings();
+    final failed = await _viewModel.deleteSelectedRatings();
     if (!mounted) return;
     if (failed > 0) {
-      _showMessage(widget.viewModel.message!);
+      _showMessage(_viewModel.message!);
     } else {
-      _showMessage(widget.viewModel.refreshWarning ?? '선택한 평점을 삭제했습니다.');
+      _showMessage(_viewModel.refreshWarning ?? '선택한 평점을 삭제했습니다.');
     }
   }
 
@@ -143,44 +194,42 @@ class _MemberRatingsScreenState extends State<MemberRatingsScreen> {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: widget.viewModel,
+      animation: _viewModel,
       builder: (context, _) => PopScope(
-        canPop: !widget.viewModel.isDeletingSelected,
+        canPop: !_viewModel.isDeletingSelected,
         child: Scaffold(
           appBar: CommonAppBar(
-            title: widget.viewModel.isSelectionMode
-                ? '${widget.viewModel.selectedRatingIds.length}개 선택'
+            title: _viewModel.isSelectionMode
+                ? '${_viewModel.selectedRatingIds.length}개 선택'
                 : '내가 등록한 평점',
             centerTitle: true,
             titleStyle: AppTextStyles.signUpAppBarTitle.copyWith(fontSize: 20),
             onBack: () {
-              if (widget.viewModel.isDeletingSelected) return;
+              if (_viewModel.isDeletingSelected) return;
               context.canPop() ? context.pop() : context.go('/my');
             },
             actions: [
               TextButton(
                 onPressed:
-                    widget.viewModel.isDeletingSelected ||
-                        (!widget.viewModel.isSelectionMode &&
-                            widget.viewModel.state !=
-                                MemberRatingsLoadState.success)
+                    _viewModel.isDeletingSelected ||
+                        (!_viewModel.isSelectionMode &&
+                            _viewModel.state != MemberRatingsLoadState.success)
                     ? null
-                    : widget.viewModel.isSelectionMode
-                    ? widget.viewModel.cancelSelectionMode
-                    : widget.viewModel.startSelectionMode,
-                child: Text(widget.viewModel.isSelectionMode ? '취소' : '편집'),
+                    : _viewModel.isSelectionMode
+                    ? _viewModel.cancelSelectionMode
+                    : _viewModel.startSelectionMode,
+                child: Text(_viewModel.isSelectionMode ? '취소' : '편집'),
               ),
             ],
           ),
-          bottomNavigationBar: widget.viewModel.isSelectionMode
+          bottomNavigationBar: _viewModel.isSelectionMode
               ? SafeArea(
                   minimum: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                   child: AppButton(
-                    label:
-                        '선택한 ${widget.viewModel.selectedRatingIds.length}개 삭제',
+                    label: '선택한 ${_viewModel.selectedRatingIds.length}개 삭제',
                     onPressed:
-                        widget.viewModel.selectedRatingIds.isEmpty ||
-                            widget.viewModel.isDeletingSelected
+                        _viewModel.selectedRatingIds.isEmpty ||
+                            _viewModel.isDeletingSelected
                         ? null
                         : _deleteSelected,
                   ),
@@ -188,7 +237,7 @@ class _MemberRatingsScreenState extends State<MemberRatingsScreen> {
               : null,
           body: Stack(
             children: [
-              switch (widget.viewModel.state) {
+              switch (_viewModel.state) {
                 MemberRatingsLoadState.loading => const _CenteredState(
                   child: CircularProgressIndicator(color: AppColors.violet),
                 ),
@@ -205,7 +254,7 @@ class _MemberRatingsScreenState extends State<MemberRatingsScreen> {
                         width: 120,
                         child: AppButton(
                           label: '다시 시도',
-                          onPressed: widget.viewModel.load,
+                          onPressed: _viewModel.load,
                         ),
                       ),
                     ],
@@ -213,26 +262,25 @@ class _MemberRatingsScreenState extends State<MemberRatingsScreen> {
                 ),
                 MemberRatingsLoadState.success => ListView.separated(
                   padding: const EdgeInsets.fromLTRB(20, 32, 20, 32),
-                  itemCount: widget.viewModel.items.length,
+                  itemCount: _viewModel.items.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 18),
                   itemBuilder: (context, index) {
-                    final item = widget.viewModel.items[index];
+                    final item = _viewModel.items[index];
                     return _RatingCard(
                       item: item,
-                      isSelectionMode: widget.viewModel.isSelectionMode,
-                      isSelected: widget.viewModel.selectedRatingIds.contains(
+                      isSelectionMode: _viewModel.isSelectionMode,
+                      isSelected: _viewModel.selectedRatingIds.contains(
                         item.rating.ratingId,
                       ),
-                      onSelected: () => widget.viewModel.toggleSelection(
-                        item.rating.ratingId,
-                      ),
+                      onSelected: () =>
+                          _viewModel.toggleSelection(item.rating.ratingId),
                       onEdit: () => _edit(item),
                       onDelete: () => _delete(item),
                     );
                   },
                 ),
               },
-              if (widget.viewModel.isDeletingSelected) ...[
+              if (_viewModel.isDeletingSelected) ...[
                 const ModalBarrier(dismissible: false, color: Colors.black45),
                 const Center(
                   child: CircularProgressIndicator(color: AppColors.white),

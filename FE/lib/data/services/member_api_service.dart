@@ -5,11 +5,13 @@ import '../models/member_rating.dart';
 import '../models/common_response.dart';
 import '../models/rating_requests.dart';
 import '../models/sign_up_models.dart';
+import 'learning_member_session.dart';
 
 class MemberApiService {
-  MemberApiService(this._dio);
+  MemberApiService(this._dio, {LearningMemberSession? authSession})
+    : _session = authSession;
 
-  factory MemberApiService.fromEnvironment() {
+  factory MemberApiService.fromEnvironment({LearningMemberSession? session}) {
     String? baseUrl;
     try {
       baseUrl = dotenv.maybeGet('MOVIE_API_BASE_URL')?.trim();
@@ -27,10 +29,23 @@ class MemberApiService {
           headers: const {'accept': 'application/json'},
         ),
       ),
+      authSession: session,
     );
   }
 
   final Dio _dio;
+  LearningMemberSession? _session;
+
+  void bindSession(LearningMemberSession session) {
+    _session = session;
+  }
+
+  Options? _authenticatedOptions() {
+    final token = _session?.accessToken;
+    return token == null || token.isEmpty
+        ? null
+        : Options(headers: {'Authorization': 'Bearer $token'});
+  }
 
   Future<bool> isNicknameAvailable(String nickname) async {
     final response = await _dio.get<Map<String, dynamic>>(
@@ -74,13 +89,27 @@ class MemberApiService {
     );
   }
 
+  Future<CommonResponse<LoginResult>> login({
+    required String email,
+    required String password,
+  }) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/auth/login',
+      data: {'email': email.trim(), 'password': password},
+    );
+    return CommonResponse<LoginResult>.fromJson(
+      response.data ?? const <String, dynamic>{},
+      (value) => LoginResult.fromJson(value as Map<String, dynamic>),
+    );
+  }
+
   Future<CommonResponse<int>> createRating({
-    required int memberId,
     required CreateRatingRequest request,
   }) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/members/$memberId/ratings',
+      '/ratings',
       data: request.toJson(),
+      options: _authenticatedOptions(),
     );
     return CommonResponse<int>.fromJson(
       response.data ?? const <String, dynamic>{},
@@ -89,13 +118,13 @@ class MemberApiService {
   }
 
   Future<CommonResponse<Object?>> updateRating({
-    required int memberId,
     required int ratingId,
     required UpdateRatingRequest request,
   }) async {
     final response = await _dio.patch<Map<String, dynamic>>(
-      '/members/$memberId/ratings/$ratingId',
+      '/ratings/$ratingId',
       data: request.toJson(),
+      options: _authenticatedOptions(),
     );
     return CommonResponse<Object?>.fromJson(
       response.data ?? const <String, dynamic>{},
@@ -103,11 +132,11 @@ class MemberApiService {
     );
   }
 
-  Future<void> deleteRating({
-    required int memberId,
-    required int ratingId,
-  }) async {
-    await _dio.delete<void>('/members/$memberId/ratings/$ratingId');
+  Future<void> deleteRating({required int ratingId}) async {
+    await _dio.delete<void>(
+      '/ratings/$ratingId',
+      options: _authenticatedOptions(),
+    );
   }
 }
 
