@@ -1,5 +1,6 @@
 package com.umc11th.movie.controller;
 
+import com.umc11th.movie.auth.JwtTokenProvider;
 import com.umc11th.movie.dto.EmailCheckResponse;
 import com.umc11th.movie.dto.MemberResponse;
 import com.umc11th.movie.dto.NicknameCheckResponse;
@@ -27,6 +28,9 @@ class MemberControllerTest {
 
     @MockitoBean
     private MemberService memberService;
+
+    @MockitoBean
+    private JwtTokenProvider jwtTokenProvider;
 
     @Test
     void checksNicknameAvailability() throws Exception {
@@ -76,6 +80,28 @@ class MemberControllerTest {
                 .andExpect(jsonPath("$.result.email").value("umc@example.com"))
                 .andExpect(jsonPath("$.result.nickname").value("moviefan"))
                 .andExpect(jsonPath("$.result.password").doesNotExist());
+    }
+
+    @Test
+    void getsAuthenticatedMemberProfile() throws Exception {
+        when(jwtTokenProvider.getMemberId("valid-token")).thenReturn(1L);
+        when(memberService.getMe(1L))
+                .thenReturn(new MemberResponse(1L, "umc@example.com", "moviefan"));
+
+        mockMvc.perform(get("/members/me")
+                        .header("Authorization", "Bearer valid-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("COMMON200"))
+                .andExpect(jsonPath("$.result.memberId").value(1))
+                .andExpect(jsonPath("$.result.email").value("umc@example.com"));
+    }
+
+    @Test
+    void rejectsMemberProfileWithoutToken() throws Exception {
+        mockMvc.perform(get("/members/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.isSuccess").value(false))
+                .andExpect(jsonPath("$.code").value("AUTH401_2"));
     }
 
     @Test
