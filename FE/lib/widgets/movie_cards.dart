@@ -1,34 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../data/models/tmdb_movie_dto.dart';
-import '../data/movie.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import 'tmdb_poster_image.dart';
-
-class MoviePoster extends StatelessWidget {
-  const MoviePoster({super.key, required this.movie, this.borderRadius = 12});
-
-  final Movie movie;
-  final double borderRadius;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
-      child: Image.asset(
-        movie.posterAsset,
-        fit: BoxFit.cover,
-        semanticLabel: '${movie.title} 포스터',
-        errorBuilder: (context, error, stackTrace) => Container(
-          color: AppColors.surfaceLow,
-          alignment: Alignment.center,
-          child: const Icon(Icons.movie_outlined, color: AppColors.gray),
-        ),
-      ),
-    );
-  }
-}
 
 class RatingLabel extends StatelessWidget {
   const RatingLabel({super.key, required this.rating});
@@ -94,9 +69,15 @@ class MovieCard extends StatelessWidget {
 }
 
 class MovieGridCard extends StatelessWidget {
-  const MovieGridCard({super.key, required this.movie, required this.onTap});
+  const MovieGridCard({
+    super.key,
+    required this.movie,
+    required this.subtitle,
+    required this.onTap,
+  });
 
-  final Movie movie;
+  final TmdbMovieDto movie;
+  final String subtitle;
   final VoidCallback onTap;
 
   @override
@@ -111,7 +92,10 @@ class MovieGridCard extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                MoviePoster(movie: movie),
+                TmdbPosterImage(
+                  posterPath: movie.posterPath,
+                  semanticLabel: '${movie.title} 포스터',
+                ),
                 Positioned(
                   top: 8,
                   right: 8,
@@ -124,7 +108,7 @@ class MovieGridCard extends StatelessWidget {
                       color: AppColors.white,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: RatingLabel(rating: movie.rating),
+                    child: RatingLabel(rating: movie.voteAverage),
                   ),
                 ),
               ],
@@ -138,7 +122,9 @@ class MovieGridCard extends StatelessWidget {
             style: AppTextStyles.labelLarge,
           ),
           Text(
-            '${movie.year} · ${movie.genre}',
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: AppTextStyles.bodySmall,
           ),
         ],

@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../data/genre_filter.dart';
 import '../data/genre_preference.dart';
 import '../data/models/tmdb_movie_dto.dart';
-import '../data/movie_service.dart';
 import '../data/services/tmdb_movie_service.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/main/main_screen.dart';
@@ -15,6 +13,7 @@ import '../screens/profile_screen.dart';
 import '../screens/sign_up/sign_up_screen.dart';
 import '../screens/start/start_screen.dart';
 import '../view_models/movie_home_view_model.dart';
+import '../view_models/movie_list_view_model.dart';
 
 class AppRouter {
   AppRouter._();
@@ -23,7 +22,6 @@ class AppRouter {
 
   static GoRouter createRouter({
     String initialLocation = '/start',
-    FakeMovieService movieService = const FakeMovieService(),
     GenrePreference? genrePreference,
   }) {
     final rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -65,13 +63,14 @@ class AppRouter {
               routes: [
                 GoRoute(
                   path: '/movies',
-                  builder: (context, state) => MovieListScreen(
-                    selectedGenres: parseGenres(
-                      state.uri.queryParameters[genresQueryKey],
-                    ),
-                    movieService: movieService,
-                    genrePreference: preference,
-                  ),
+                  builder: (context, state) =>
+                      ChangeNotifierProvider<MovieListViewModel>(
+                        create: (context) => MovieListViewModel(
+                          context.read<TmdbMovieService>(),
+                          preference,
+                        )..loadInitial(),
+                        child: const MovieListScreen(),
+                      ),
                   routes: [
                     GoRoute(
                       path: ':movieId',

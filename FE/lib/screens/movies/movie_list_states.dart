@@ -46,12 +46,19 @@ class MovieListEmpty extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.movie_outlined, size: 48, color: AppColors.gray),
+                  const Icon(
+                    Icons.movie_outlined,
+                    size: 48,
+                    color: AppColors.gray,
+                  ),
                   const SizedBox(height: 12),
                   Text(message, style: AppTextStyles.bodyMedium),
                   if (actionLabel != null && onAction != null) ...[
                     const SizedBox(height: 16),
-                    OutlinedButton(onPressed: onAction, child: Text(actionLabel!)),
+                    OutlinedButton(
+                      onPressed: onAction,
+                      child: Text(actionLabel!),
+                    ),
                   ],
                 ],
               ),
@@ -64,8 +71,9 @@ class MovieListEmpty extends StatelessWidget {
 }
 
 class MovieListError extends StatelessWidget {
-  const MovieListError({super.key, required this.onRetry});
+  const MovieListError({super.key, this.message, required this.onRetry});
 
+  final String? message;
   final VoidCallback onRetry;
 
   @override
@@ -78,7 +86,11 @@ class MovieListError extends StatelessWidget {
           children: [
             const Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: 12),
-            const Text('영화를 불러오지 못했어요', style: AppTextStyles.titleMedium),
+            Text(
+              message ?? '영화를 불러오지 못했어요',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.titleMedium,
+            ),
             const SizedBox(height: 4),
             const Text(
               '네트워크 상태를 확인한 뒤 다시 시도해 주세요.',

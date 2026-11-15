@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 
-import '../../data/movie.dart';
+import '../../data/models/tmdb_genre_dto.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 
 class GenreFilterSheet extends StatefulWidget {
   const GenreFilterSheet({
     super.key,
+    required this.genres,
     required this.initialSelection,
     required this.scrollController,
   });
 
-  final Set<String> initialSelection;
+  final List<TmdbGenreDto> genres;
+  final List<int> initialSelection;
   final ScrollController scrollController;
 
   @override
@@ -19,14 +21,14 @@ class GenreFilterSheet extends StatefulWidget {
 }
 
 class _GenreFilterSheetState extends State<GenreFilterSheet> {
-  late final Set<String> _selection = {...widget.initialSelection};
+  late final Set<int> _selection = {...widget.initialSelection};
 
-  void _toggle(String genre, bool checked) {
+  void _toggle(int genreId, bool checked) {
     setState(() {
       if (checked) {
-        _selection.add(genre);
+        _selection.add(genreId);
       } else {
-        _selection.remove(genre);
+        _selection.remove(genreId);
       }
     });
   }
@@ -64,13 +66,13 @@ class _GenreFilterSheetState extends State<GenreFilterSheet> {
         Expanded(
           child: ListView.builder(
             controller: widget.scrollController,
-            itemCount: allGenres.length,
+            itemCount: widget.genres.length,
             itemBuilder: (context, index) {
-              final genre = allGenres[index];
+              final genre = widget.genres[index];
               return CheckboxListTile(
-                value: _selection.contains(genre),
-                onChanged: (checked) => _toggle(genre, checked ?? false),
-                title: Text(genre, style: AppTextStyles.bodyMedium),
+                value: _selection.contains(genre.id),
+                onChanged: (checked) => _toggle(genre.id, checked ?? false),
+                title: Text(genre.name, style: AppTextStyles.bodyMedium),
                 activeColor: AppColors.violet,
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12),
@@ -85,7 +87,7 @@ class _GenreFilterSheetState extends State<GenreFilterSheet> {
             child: SizedBox(
               height: 52,
               child: ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(_selection),
+                onPressed: () => Navigator.of(context).pop(_selection.toList()),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.violet,
                   foregroundColor: AppColors.white,
