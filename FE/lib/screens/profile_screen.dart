@@ -4,6 +4,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/common_app_bar.dart';
 import '../widgets/stat_item.dart';
+import 'my_ratings_section.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -25,6 +26,8 @@ class ProfileScreen extends StatelessWidget {
               ProfileStats(),
               SizedBox(height: 32),
               FavoriteGenres(),
+              SizedBox(height: 32),
+              MyRatingsSection(),
               SizedBox(height: 32),
             ],
           ),
