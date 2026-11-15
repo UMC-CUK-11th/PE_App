@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>mock-frontend</title>
+</head>
+<body>
+  <h1>CORS 확인용 간이 프론트</h1>
+  <button id="nickname">닉네임 중복 체크 (수현)</button>
+  <button id="email">이메일 중복 체크 (noco@umc.com)</button>
+  <button id="ratings">1번 유저 평점 조회</button>
+  <pre id="result">버튼을 눌러 보세요.</pre>
+  <script>
+    const API = 'http://localhost:8080';
+    const result = document.getElementById('result');
+    const call = (path) =>
+      fetch(API + path)
+        .then((res) => res.json())
+        .then((data) => (result.textContent = JSON.stringify(data, null, 2)))
+        .catch((err) => (result.textContent = '요청 실패: ' + err));
+
+    document.getElementById('nickname').onclick = () => call('/members/nickname/' + encodeURIComponent('수현'));
+    document.getElementById('email').onclick = () => call('/members/email/noco@umc.com');
+    document.getElementById('ratings').onclick = () => call('/members/1/ratings');
+  </script>
+</body>
+</html>
