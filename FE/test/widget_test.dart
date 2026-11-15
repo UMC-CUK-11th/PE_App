@@ -96,8 +96,14 @@ class FakeTmdbMovieService extends TmdbMovieService {
     );
   }
 
+  /// true면 fetchGenres가 DioException으로 실패합니다.
+  bool failGenres = false;
+
   @override
-  Future<List<TmdbGenreDto>> fetchGenres() async => genres;
+  Future<List<TmdbGenreDto>> fetchGenres() async {
+    if (failGenres) throw _networkError();
+    return genres;
+  }
 
   @override
   Future<TmdbMovieDto> fetchMovie(int movieId) async {
@@ -506,17 +512,22 @@ void main() {
       expect(viewModel.movies.single.title, '우주 영화');
     });
 
-    test('장르 로드 실패 후 "전체"를 눌러도 장르부터 다시 불러온다', () async {
-      final service = _defaultService()..genres = const [];
-      final viewModel = MovieListViewModel(service, InMemoryGenrePreference());
-      await viewModel.loadInitial();
-      expect(viewModel.genres, isEmpty);
+    testWidgets('Genre API 실패 후 "전체" 칩을 누르면 장르부터 다시 불러온다', (tester) async {
+      final service = _defaultService()..failGenres = true;
+      await _pumpApp(tester, location: '/movies', service: service);
 
-      service.genres = const [TmdbGenreDto(id: 28, name: '액션')];
-      await viewModel.selectGenres(const []);
+      expect(find.text('다시 시도'), findsOneWidget);
+      expect(find.widgetWithText(FilterChip, '액션'), findsNothing);
 
-      expect(viewModel.genres, hasLength(1));
-      expect(viewModel.status, MovieListLoadStatus.success);
+      service.failGenres = false;
+      service.discoverCalls.clear();
+      await tester.tap(find.widgetWithText(FilterChip, '전체'));
+      await tester.pumpAndSettle();
+
+      // 영화만 다시 조회하지 않고 장르 Chip까지 복구됩니다.
+      expect(find.widgetWithText(FilterChip, '액션'), findsOneWidget);
+      expect(find.text('영화 1'), findsOneWidget);
+      expect(service.discoverCalls.first.genreIds, isNull);
     });
 
     test('빈 목록에서 새로고침이 실패하면 Empty 대신 Error가 된다', () async {
