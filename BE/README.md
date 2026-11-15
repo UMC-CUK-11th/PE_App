@@ -15,11 +15,20 @@ UMC 11기 PE 워크북 Backend 실습 코드입니다.
 
 ### API
 
-| API | Method | URL | Request | Success Response (200) |
+5주차 조회 API는 결과를 그대로, 6주차 저장 API는 `{ isSuccess, code, message, result }` 형식으로 응답합니다. 실패는 모두 같은 형식입니다.
+
+| API | Method | URL | 성공 | 대표 실패 |
 | --- | --- | --- | --- | --- |
-| 닉네임 중복 체크 | GET | `/members/nickname/{nickname}` | Path: nickname (2~12자, 아니면 400) | `{ "available": true }` |
-| 이메일 중복 체크 | GET | `/members/email/{email}` | Path: email (이메일 형식, 아니면 400) | `{ "available": true }` |
-| 유저별 평점 조회 | GET | `/members/{memberId}/ratings` | Path: memberId (없는 회원 404) | `[{ "ratingId", "movieId", "score", "comment", "createdAt", "updatedAt" }]` 최신순 |
+| 닉네임 중복 체크 | GET | `/members/nickname/{nickname}` | 200 `{ "available": true }` | 400 형식 오류(2~12자) |
+| 이메일 중복 체크 | GET | `/members/email/{email}` | 200 `{ "available": true }` | 400 형식 오류 |
+| 유저별 평점 조회 | GET | `/members/{memberId}/ratings` | 200 평점 배열(최신순) | 404 `MEMBER4041` |
+| 회원가입 | POST | `/members` `{ email, password, nickname }` | 201 `result: { memberId, email, nickname }` | 400 `COMMON4001`, 409 `MEMBER4091`(이메일)·`MEMBER4092`(닉네임)·`COMMON4091`(DB 제약) |
+| 평점 등록 | POST | `/members/{memberId}/ratings` `{ movieId, score, comment }` | 201 `result: ratingId` | 400, 404 `MEMBER4041`, 409 `RATING4091` |
+| 평점 수정 | PATCH | `/members/{memberId}/ratings/{ratingId}` `{ score, comment }` | 200 | 400, 403 `RATING4031`, 404 `RATING4041` |
+| 평점 삭제 | DELETE | `/members/{memberId}/ratings/{ratingId}` | 204 | 403 `RATING4031`, 404 `RATING4041` |
+
+- 비밀번호는 대문자·소문자·숫자·특수문자(`!@#$%^&*`)를 포함한 8자 이상이며 bcrypt 해시(60자)로만 저장합니다.
+- 별점은 1~5, 후기는 500자 이하입니다.
 
 CORS는 `http://localhost:5173`만 허용합니다. 브라우저 확인은 `mock-frontend/`(`npx serve -l 5173`) 또는 Flutter Web(`flutter run -d web-server --web-port 5173`)으로 합니다.
 

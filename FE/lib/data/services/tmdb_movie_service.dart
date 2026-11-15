@@ -52,12 +52,22 @@ class TmdbMovieService {
         .toList();
   }
 
-  /// 상세 화면에 목록 데이터 없이 진입했을 때(딥링크 등) 사용합니다.
-  Future<TmdbMovieDto> fetchMovie(int movieId) async {
+  /// 영화 한 편 상세. TMDB GET /movie/{movie_id}는 영화 객체를 그대로 돌려줍니다.
+  Future<TmdbMovieDto> fetchMovieDetail(int movieId) async {
     final response = await _dio.get(
       '/movie/$movieId',
       queryParameters: {'language': 'ko-KR'},
     );
     return TmdbMovieDto.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// 없는 영화(404)만 null로 바꾸고, 다른 네트워크 오류는 호출한 쪽이 처리합니다.
+  Future<TmdbMovieDto?> findMovieById(int movieId) async {
+    try {
+      return await fetchMovieDetail(movieId);
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) return null;
+      rethrow;
+    }
   }
 }

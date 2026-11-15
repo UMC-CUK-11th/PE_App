@@ -4,10 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../../theme/app_colors.dart';
-import '../../theme/app_text_styles.dart';
 import '../../view_models/sign_up_view_model.dart';
 import '../../widgets/common_app_bar.dart';
+import '../../widgets/movielog_button.dart';
 import '../../widgets/movielog_text_form_field.dart';
 import 'sign_up_sections.dart';
 import 'sign_up_validators.dart';
@@ -104,19 +103,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _checkButton({
-    required bool enabled,
-    required VoidCallback onPressed,
-  }) {
-    return TextButton(
-      onPressed: enabled ? onPressed : null,
-      style: TextButton.styleFrom(foregroundColor: AppColors.violet),
-      child: const Text('중복 확인'),
-    );
-  }
-
   Widget _buildForm({required bool isWide}) {
     final viewModel = context.watch<SignUpViewModel>();
+    final nickname = viewModel.nickname;
+    final email = viewModel.email;
     final nicknameValid =
         SignUpValidators.nickname(_nicknameController.text) == null;
     final emailValid = SignUpValidators.email(_emailController.text) == null;
@@ -138,19 +128,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
             validator: SignUpValidators.nickname,
             textInputAction: TextInputAction.next,
             onChanged: (value) {
-              viewModel.nicknameChanged();
+              viewModel.onNicknameChanged(value);
               _onFieldChanged(value);
             },
             onFieldSubmitted: (_) => _emailFocusNode.requestFocus(),
-            trailing: _checkButton(
-              enabled:
-                  nicknameValid &&
-                  viewModel.nickname != DuplicateCheck.checking,
-              onPressed: () =>
-                  viewModel.checkNickname(_nicknameController.text.trim()),
+            errorText: nickname.errorText,
+            helperText: nickname.status == CheckStatus.available
+                ? '사용할 수 있는 닉네임입니다.'
+                : null,
+            // 입력창 옆 보조 버튼: width null(내용 크기)
+            action: MovieLogButton(
+              label: '중복 확인',
+              isLoading: nickname.status == CheckStatus.checking,
+              onPressed: nicknameValid && nickname.canCheck
+                  ? () => viewModel.checkNickname(_nicknameController.text)
+                  : null,
             ),
           ),
-          DuplicateCheckMessage(status: viewModel.nickname, label: '닉네임'),
           const SizedBox(height: 16),
           MovieLogTextFormField(
             label: '이메일',
@@ -161,17 +155,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
             onChanged: (value) {
-              viewModel.emailChanged();
+              viewModel.onEmailChanged(value);
               _onFieldChanged(value);
             },
             onFieldSubmitted: (_) => _passwordFocusNode.requestFocus(),
-            trailing: _checkButton(
-              enabled: emailValid && viewModel.email != DuplicateCheck.checking,
-              onPressed: () =>
-                  viewModel.checkEmail(_emailController.text.trim()),
+            errorText: email.errorText,
+            helperText: email.status == CheckStatus.available
+                ? '사용할 수 있는 이메일입니다.'
+                : null,
+            action: MovieLogButton(
+              label: '중복 확인',
+              isLoading: email.status == CheckStatus.checking,
+              onPressed: emailValid && email.canCheck
+                  ? () => viewModel.checkEmail(_emailController.text)
+                  : null,
             ),
           ),
-          DuplicateCheckMessage(status: viewModel.email, label: '이메일'),
           const SizedBox(height: 16),
           MovieLogTextFormField(
             label: '비밀번호',
@@ -200,40 +199,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
             onChanged: (value) => setState(() => _agreedToTerms = value),
           ),
           const SizedBox(height: 16),
-          SignUpButton(enabled: _canSubmit(viewModel), onPressed: _submit),
+          // Form 하단 버튼: width double.infinity(부모 최대 너비)
+          MovieLogButton(
+            label: '가입하기',
+            width: double.infinity,
+            height: 52,
+            onPressed: _canSubmit(viewModel) ? _submit : null,
+          ),
           const SizedBox(height: 16),
           const LoginPrompt(),
         ],
       ),
-    );
-  }
-}
-
-/// 중복 체크 결과 문구. 확인 전에는 자리만 차지하지 않도록 비워 둡니다.
-class DuplicateCheckMessage extends StatelessWidget {
-  const DuplicateCheckMessage({
-    super.key,
-    required this.status,
-    required this.label,
-  });
-
-  final DuplicateCheck status;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final (text, color) = switch (status) {
-      DuplicateCheck.unchecked => (null, AppColors.gray),
-      DuplicateCheck.checking => ('$label 확인 중이에요…', AppColors.gray),
-      DuplicateCheck.available => ('사용 가능한 $label이에요', AppColors.violet),
-      DuplicateCheck.taken => ('이미 사용 중인 $label이에요', AppColors.error),
-      DuplicateCheck.failed => ('확인하지 못했어요. 잠시 후 다시 시도해 주세요', AppColors.error),
-    };
-    if (text == null) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 6, left: 4),
-      child: Text(text, style: AppTextStyles.bodySmall.copyWith(color: color)),
     );
   }
 }

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/common_app_bar.dart';
 import '../widgets/stat_item.dart';
-import 'my_ratings_section.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -27,7 +27,7 @@ class ProfileScreen extends StatelessWidget {
               SizedBox(height: 32),
               FavoriteGenres(),
               SizedBox(height: 32),
-              MyRatingsSection(),
+              MyRatingsEntry(),
               SizedBox(height: 32),
             ],
           ),
@@ -57,9 +57,7 @@ class ProfileHeader extends StatelessWidget {
         const SizedBox(height: 12),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('무비러버', style: AppTextStyles.titleLarge),
-          ],
+          children: [Text('무비러버', style: AppTextStyles.titleLarge)],
         ),
         const SizedBox(height: 8),
         Text(
@@ -81,11 +79,17 @@ class ProfileStats extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: const [
-        Expanded(child: StatItem(label: '본 영화', value: '342')),
+        Expanded(
+          child: StatItem(label: '본 영화', value: '342'),
+        ),
         SizedBox(width: 8),
-        Expanded(child: StatItem(label: '평점', value: '4.2')),
+        Expanded(
+          child: StatItem(label: '평점', value: '4.2'),
+        ),
         SizedBox(width: 8),
-        Expanded(child: StatItem(label: '즐겨찾기', value: '58')),
+        Expanded(
+          child: StatItem(label: '즐겨찾기', value: '58'),
+        ),
       ],
     );
   }
@@ -109,24 +113,25 @@ class FavoriteGenres extends StatelessWidget {
           children: _genres
               .map(
                 (genre) => Chip(
-              label: Text(
-                genre,
-                style: AppTextStyles.bodySmall.copyWith(
-                  color: AppColors.white,
+                  label: Text(
+                    genre,
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: AppColors.white,
+                    ),
+                  ),
+                  backgroundColor: AppColors.violet,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
-              ),
-              backgroundColor: AppColors.violet,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-          )
+              )
               .toList(),
         ),
       ],
     );
   }
 }
+
 class EditProfileButton extends StatelessWidget {
   const EditProfileButton({super.key});
 
@@ -152,6 +157,32 @@ class EditProfileButton extends StatelessWidget {
           ),
         ),
         child: const Text('프로필 수정'),
+      ),
+    );
+  }
+}
+
+/// 마이페이지 → 내가 등록한 평점(자식 화면) 진입 항목입니다.
+class MyRatingsEntry extends StatelessWidget {
+  const MyRatingsEntry({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppColors.outline),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        leading: const Icon(
+          Icons.rate_review_outlined,
+          color: AppColors.violet,
+        ),
+        title: Text('내가 등록한 평점', style: AppTextStyles.labelLarge),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => context.push('/my/ratings'),
       ),
     );
   }

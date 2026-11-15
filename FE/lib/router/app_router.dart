@@ -4,12 +4,14 @@ import 'package:provider/provider.dart';
 
 import '../data/genre_preference.dart';
 import '../data/models/tmdb_movie_dto.dart';
-import '../data/services/movielog_member_service.dart';
+import '../data/services/member_check_service.dart';
+import '../data/services/rating_api_service.dart';
 import '../data/services/tmdb_movie_service.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/main/main_screen.dart';
 import '../screens/movies/movie_detail_screen.dart';
 import '../screens/movies/movie_list_screen.dart';
+import '../screens/my/my_ratings_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/sign_up/sign_up_screen.dart';
 import '../screens/start/start_screen.dart';
@@ -42,7 +44,7 @@ class AppRouter {
           path: '/register',
           builder: (context, state) => ChangeNotifierProvider<SignUpViewModel>(
             create: (context) =>
-                SignUpViewModel(context.read<MovieLogMemberService>()),
+                SignUpViewModel(context.read<MemberCheckService>()),
             child: const SignUpScreen(),
           ),
         ),
@@ -95,14 +97,23 @@ class AppRouter {
               routes: [
                 GoRoute(
                   path: '/my',
-                  builder: (context, state) =>
-                      ChangeNotifierProvider<MyRatingsViewModel>(
-                        create: (context) => MyRatingsViewModel(
-                          context.read<MovieLogMemberService>(),
-                          context.read<TmdbMovieService>(),
-                        )..load(),
-                        child: const ProfileScreen(),
-                      ),
+                  builder: (context, state) => const ProfileScreen(),
+                  routes: [
+                    GoRoute(
+                      path: 'ratings', // 최종 경로: /my/ratings
+                      // root Navigator 위에 올려 하단 NavigationBar를 가립니다.
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (context, state) =>
+                          ChangeNotifierProvider<MyRatingsViewModel>(
+                            create: (context) => MyRatingsViewModel(
+                              context.read<RatingApiService>(),
+                              context.read<TmdbMovieService>(),
+                              sampleMemberId, // 6주차는 학습용 ID 1입니다.
+                            )..load(),
+                            child: const MyRatingsScreen(),
+                          ),
+                    ),
+                  ],
                 ),
               ],
             ),

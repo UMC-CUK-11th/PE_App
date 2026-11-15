@@ -45,41 +45,6 @@ class TermsAgreement extends StatelessWidget {
   }
 }
 
-class SignUpButton extends StatelessWidget {
-  const SignUpButton({
-    super.key,
-    required this.enabled,
-    required this.onPressed,
-  });
-
-  final bool enabled;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 52,
-      child: ElevatedButton(
-        onPressed: enabled ? onPressed : null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.violet,
-          foregroundColor: AppColors.white,
-          disabledBackgroundColor: AppColors.violetDisabled,
-          disabledForegroundColor: AppColors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-        child: Text(
-          '가입하기',
-          style: AppTextStyles.labelLarge.copyWith(color: AppColors.white),
-        ),
-      ),
-    );
-  }
-}
-
 class LoginPrompt extends StatelessWidget {
   const LoginPrompt({super.key});
 

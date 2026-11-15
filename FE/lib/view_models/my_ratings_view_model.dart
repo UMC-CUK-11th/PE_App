@@ -1,75 +1,83 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
-import '../data/models/rating_dto.dart';
+import '../data/models/rating_with_movie.dart';
 import '../data/models/tmdb_movie_dto.dart';
-import '../data/services/movielog_member_service.dart';
+import '../data/services/rating_api_service.dart';
 import '../data/services/tmdb_movie_service.dart';
 
-enum MyRatingsStatus { loading, success, empty, error }
+/// 로그인한 "내 계정"이 아니라 학습용 공개 데이터 memberId입니다. JWT 주차에서 바뀝니다.
+const int sampleMemberId = 1;
 
-class MyRating {
-  const MyRating(this.rating, this.movie);
+enum MyRatingsLoadStatus { idle, loading, success, empty, error }
 
-  final RatingDto rating;
-
-  /// TMDB 조회에 실패하면 null이고, 화면은 movieId만 보여 줍니다.
-  final TmdbMovieDto? movie;
-}
-
-/// 마이 화면의 "내 평점" 영역. 평점은 MovieLog API, 영화 정보는 TMDB에서 가져옵니다.
+/// "내가 등록한 평점" 화면. 평점은 MovieLog API, 영화 제목·포스터는 TMDB에서 가져옵니다.
 class MyRatingsViewModel extends ChangeNotifier {
-  MyRatingsViewModel(
-    this._memberService,
-    this._tmdbService, {
-    this.memberId = 1,
-  });
+  MyRatingsViewModel(this._service, this._movieService, this.memberId);
 
-  // TODO(7주차 로그인): 토큰의 회원 ID로 교체합니다. 지금은 시드 데이터 1번 회원입니다.
+  final RatingApiService _service;
+  final TmdbMovieService _movieService;
   final int memberId;
-  final MovieLogMemberService _memberService;
-  final TmdbMovieService _tmdbService;
+  final Map<int, TmdbMovieDto?> _movieCache = {};
 
-  List<MyRating> ratings = const [];
-  MyRatingsStatus status = MyRatingsStatus.loading;
+  List<RatingWithMovie> ratings = const [];
+  MyRatingsLoadStatus status = MyRatingsLoadStatus.idle;
+  String? message;
+
+  int _requestVersion = 0;
   bool _disposed = false;
 
   Future<void> load() async {
-    status = MyRatingsStatus.loading;
+    final version = ++_requestVersion;
+    status = MyRatingsLoadStatus.loading;
+    message = null;
     notifyListeners();
 
     try {
-      final fetched = await _memberService.fetchRatings(memberId);
-      final movies = await Future.wait(
-        fetched.map((r) => _movieOrNull(r.movieId)),
-      );
-      if (_disposed) return;
-      ratings = [
-        for (var i = 0; i < fetched.length; i++)
-          MyRating(fetched[i], movies[i]),
-      ];
-      status = ratings.isEmpty
-          ? MyRatingsStatus.empty
-          : MyRatingsStatus.success;
+      final rawRatings = await _service.fetchMyRatings(memberId);
+      if (!_isCurrent(version)) return;
+
+      final entries = <RatingWithMovie>[];
+      var missingMovies = 0;
+      for (final rating in rawRatings) {
+        // 같은 movieId는 한 번만 조회하고, 영화 조회 실패가 평점 목록을 지우지 않습니다.
+        if (!_movieCache.containsKey(rating.movieId)) {
+          try {
+            _movieCache[rating.movieId] = await _movieService.findMovieById(
+              rating.movieId,
+            );
+          } on DioException {
+            // 일시적 실패는 캐시하지 않아 다음 로딩에서 다시 시도합니다.
+          }
+          if (!_isCurrent(version)) return;
+        }
+        final movie = _movieCache[rating.movieId];
+        if (movie == null) missingMovies++;
+        entries.add(RatingWithMovie(rating: rating, movie: movie));
+      }
+
+      ratings = entries;
+      status = entries.isEmpty
+          ? MyRatingsLoadStatus.empty
+          : MyRatingsLoadStatus.success;
+      if (missingMovies > 0) {
+        message = '일부 영화 정보를 가져오지 못해 제목·포스터를 대신 표시합니다.';
+      }
     } on DioException catch (error) {
-      if (_disposed) return;
-      debugPrint('내 평점 조회 실패: ${error.response?.statusCode} ${error.message}');
-      status = MyRatingsStatus.error;
+      if (!_isCurrent(version)) return;
+      status = MyRatingsLoadStatus.error;
+      message = writeMyRatingsErrorMessage(error);
     }
-    notifyListeners();
+
+    if (_isCurrent(version)) notifyListeners();
   }
 
-  Future<TmdbMovieDto?> _movieOrNull(int movieId) async {
-    try {
-      return await _tmdbService.fetchMovie(movieId);
-    } on DioException {
-      return null;
-    }
-  }
+  bool _isCurrent(int version) => !_disposed && version == _requestVersion;
 
   @override
   void dispose() {
     _disposed = true;
+    _requestVersion++;
     super.dispose();
   }
 }

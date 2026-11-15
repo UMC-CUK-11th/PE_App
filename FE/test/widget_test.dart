@@ -10,14 +10,17 @@ import 'package:movielog/data/models/rating_dto.dart';
 import 'package:movielog/data/models/tmdb_genre_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_page.dart';
-import 'package:movielog/data/services/movielog_member_service.dart';
+import 'package:movielog/data/services/member_check_service.dart';
+import 'package:movielog/data/services/rating_api_service.dart';
 import 'package:movielog/data/services/tmdb_movie_service.dart';
 import 'package:movielog/router/app_router.dart';
 import 'package:movielog/screens/movies/genre_filter_sheet.dart';
 import 'package:movielog/screens/sign_up/sign_up_validators.dart';
 import 'package:movielog/theme/app_theme.dart';
 import 'package:movielog/view_models/movie_list_view_model.dart';
+import 'package:movielog/view_models/my_ratings_view_model.dart';
 import 'package:movielog/view_models/sign_up_view_model.dart';
+import 'package:movielog/widgets/movielog_button.dart';
 import 'package:movielog/widgets/tmdb_poster_image.dart';
 
 const _homeHeadline = '오늘은 어떤\n영화를 볼까요?';
@@ -99,6 +102,9 @@ class FakeTmdbMovieService extends TmdbMovieService {
   /// true면 fetchGenres가 DioException으로 실패합니다.
   bool failGenres = false;
 
+  /// true면 영화 상세 조회가 네트워크 오류로 실패합니다.
+  bool failMovieDetail = false;
+
   @override
   Future<List<TmdbGenreDto>> fetchGenres() async {
     if (failGenres) throw _networkError();
@@ -106,7 +112,8 @@ class FakeTmdbMovieService extends TmdbMovieService {
   }
 
   @override
-  Future<TmdbMovieDto> fetchMovie(int movieId) async {
+  Future<TmdbMovieDto> fetchMovieDetail(int movieId) async {
+    if (failMovieDetail) throw _networkError();
     final all = [...popular, ...pages.values.expand((page) => page)];
     for (final movie in all) {
       if (movie.id == movieId) return movie;
@@ -122,34 +129,70 @@ class FakeTmdbMovieService extends TmdbMovieService {
   }
 }
 
-/// MovieLog 백엔드 응답을 흉내 냅니다. 시드 데이터와 같은 값을 씁니다.
-class FakeMovieLogMemberService extends MovieLogMemberService {
-  FakeMovieLogMemberService({this.ratings = const []}) : super(Dio());
+/// 워크북 v5 중복 확인 응답을 흉내 냅니다.
+class FakeMemberCheckService extends MemberCheckService {
+  FakeMemberCheckService() : super(Dio());
 
-  final takenNicknames = {'수현', '민서'};
-  final takenEmails = {'noco@umc.com', 'minseo@umc.com'};
-  List<RatingDto> ratings;
+  final takenNicknames = {'영화광', 'test'};
+  final takenEmails = {'test@umc.com', 'movie@umc.com'};
   bool fail = false;
   Completer<void>? gate;
+  int calls = 0;
 
   @override
-  Future<bool> isNicknameAvailable(String nickname) async {
+  Future<bool> checkNickname(String nickname) async {
+    calls++;
     await gate?.future;
     if (fail) throw _networkError();
-    return !takenNicknames.contains(nickname);
+    return !takenNicknames.contains(nickname.trim());
   }
 
   @override
-  Future<bool> isEmailAvailable(String email) async {
+  Future<bool> checkEmail(String email) async {
+    calls++;
+    await gate?.future;
     if (fail) throw _networkError();
-    return !takenEmails.contains(email);
+    return !takenEmails.contains(email.trim());
   }
+}
+
+/// 워크북 v5 유저별 평점 조회 응답을 흉내 냅니다.
+class FakeRatingApiService extends RatingApiService {
+  FakeRatingApiService({this.ratings = const []}) : super(Dio());
+
+  List<RatingDto> ratings;
+  int? failStatus;
 
   @override
-  Future<List<RatingDto>> fetchRatings(int memberId) async {
-    if (fail) throw _networkError();
+  Future<List<RatingDto>> fetchMyRatings(int memberId) async {
+    final status = failStatus;
+    if (status != null) {
+      throw DioException(
+        requestOptions: RequestOptions(path: '/v5/members/$memberId/ratings'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/v5/members/$memberId/ratings'),
+          statusCode: status,
+        ),
+        type: DioExceptionType.badResponse,
+      );
+    }
     return ratings;
   }
+}
+
+RatingDto _rating(
+  int id,
+  int movieId, {
+  String? comment = '좋아요',
+  int score = 4,
+}) {
+  return RatingDto(
+    ratingId: id,
+    movieId: movieId,
+    score: score,
+    comment: comment,
+    createdAt: DateTime(2026, 11, 15, 12),
+  );
 }
 
 class _ThrowingGenrePreference implements GenrePreference {
@@ -183,7 +226,8 @@ Future<FakeTmdbMovieService> _pumpApp(
   String location = '/start',
   Size size = const Size(390, 844),
   FakeTmdbMovieService? service,
-  FakeMovieLogMemberService? memberService,
+  FakeMemberCheckService? checkService,
+  FakeRatingApiService? ratingService,
   GenrePreference? preference,
   bool settle = true,
 }) async {
@@ -196,8 +240,11 @@ Future<FakeTmdbMovieService> _pumpApp(
     MultiProvider(
       providers: [
         Provider<TmdbMovieService>.value(value: fake),
-        Provider<MovieLogMemberService>.value(
-          value: memberService ?? FakeMovieLogMemberService(),
+        Provider<MemberCheckService>.value(
+          value: checkService ?? FakeMemberCheckService(),
+        ),
+        Provider<RatingApiService>.value(
+          value: ratingService ?? FakeRatingApiService(),
         ),
       ],
       child: MaterialApp.router(
@@ -276,8 +323,8 @@ void main() {
       await tester.tap(find.text('중복 확인').at(0));
       await tester.tap(find.text('중복 확인').at(1));
       await tester.pumpAndSettle();
-      expect(find.text('사용 가능한 닉네임이에요'), findsOneWidget);
-      expect(find.text('사용 가능한 이메일이에요'), findsOneWidget);
+      expect(find.text('사용할 수 있는 닉네임입니다.'), findsOneWidget);
+      expect(find.text('사용할 수 있는 이메일입니다.'), findsOneWidget);
       expect(_isEnabled(tester, _submitButton), isTrue);
 
       await tester.tap(_submitButton);
@@ -763,82 +810,226 @@ void main() {
     });
   });
 
-  group('MovieLog 자체 API 연동', () {
-    test('사용 중인 닉네임은 taken, 새 닉네임은 available', () async {
-      final viewModel = SignUpViewModel(FakeMovieLogMemberService());
+  group('6주차 회원가입 중복 확인', () {
+    test('중복 응답이면 버튼을 막고, 다른 값으로 바꾸면 다시 확인할 수 있다', () async {
+      final service = FakeMemberCheckService();
+      final viewModel = SignUpViewModel(service);
 
-      await viewModel.checkNickname('수현');
-      expect(viewModel.nickname, DuplicateCheck.taken);
+      viewModel.onNicknameChanged('영화광');
+      await viewModel.checkNickname('영화광');
+      expect(viewModel.nickname.status, CheckStatus.duplicated);
+      expect(viewModel.nickname.errorText, '이미 사용 중인 닉네임입니다.');
+      expect(viewModel.nickname.canCheck, isFalse);
 
-      await viewModel.checkNickname('새닉네임');
-      expect(viewModel.nickname, DuplicateCheck.available);
+      viewModel.onNicknameChanged('영화광2');
+      expect(viewModel.nickname.status, CheckStatus.idle);
+      expect(viewModel.nickname.errorText, isNull);
+      expect(viewModel.nickname.canCheck, isTrue);
+    });
+
+    test('중복이던 문자열을 다시 입력하면 서버에 묻지 않고 바로 에러가 된다', () async {
+      final service = FakeMemberCheckService();
+      final viewModel = SignUpViewModel(service);
+
+      viewModel.onNicknameChanged('영화광');
+      await viewModel.checkNickname('영화광');
+      viewModel.onNicknameChanged('영화');
+      viewModel.onNicknameChanged(' 영화광 ');
+
+      expect(service.calls, 1);
+      expect(viewModel.nickname.status, CheckStatus.duplicated);
+      expect(viewModel.nickname.canCheck, isFalse);
     });
 
     test('확인 중에 입력이 바뀌면 늦게 온 응답을 버린다', () async {
-      final service = FakeMovieLogMemberService()..gate = Completer<void>();
+      final service = FakeMemberCheckService()..gate = Completer<void>();
       final viewModel = SignUpViewModel(service);
 
-      final pending = viewModel.checkNickname('새닉네임');
-      viewModel.nicknameChanged();
+      viewModel.onEmailChanged('new@umc.com');
+      final pending = viewModel.checkEmail('new@umc.com');
+      expect(viewModel.email.status, CheckStatus.checking);
+      viewModel.onEmailChanged('new2@umc.com');
       service.gate!.complete();
       await pending;
 
-      expect(viewModel.nickname, DuplicateCheck.unchecked);
+      expect(viewModel.email.status, CheckStatus.idle);
     });
 
-    test('서버 요청이 실패하면 failed로 표시한다', () async {
-      final viewModel = SignUpViewModel(
-        FakeMovieLogMemberService()..fail = true,
-      );
+    test('통신 실패는 중복과 다른 문구로 error 상태가 된다', () async {
+      final viewModel = SignUpViewModel(FakeMemberCheckService()..fail = true);
 
+      viewModel.onEmailChanged('new@umc.com');
       await viewModel.checkEmail('new@umc.com');
 
-      expect(viewModel.email, DuplicateCheck.failed);
-      expect(viewModel.bothAvailable, isFalse);
+      expect(viewModel.email.status, CheckStatus.error);
+      expect(viewModel.email.errorText, '중복 확인에 실패했습니다. 다시 시도해 주세요.');
+      expect(viewModel.email.canCheck, isTrue);
     });
 
-    testWidgets('사용 중인 이메일이면 화면에 안내하고 가입을 막는다', (tester) async {
+    testWidgets('통신 중에는 버튼이 비활성화되고 인디케이터만 보인다', (tester) async {
+      final service = FakeMemberCheckService()..gate = Completer<void>();
+      await _pumpApp(tester, location: '/register', checkService: service);
+
+      await tester.enterText(_field(0), '새닉네임');
+      await tester.pump();
+      await tester.tap(find.text('중복 확인').first);
+      await tester.pump();
+
+      final button = find.byType(MovieLogButton).first;
+      expect(
+        find.descendant(
+          of: button,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<ElevatedButton>(
+              find.descendant(
+                of: button,
+                matching: find.byType(ElevatedButton),
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+
+      service.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('사용할 수 있는 닉네임입니다.'), findsOneWidget);
+    });
+
+    testWidgets('서버가 중복이라고 하면 입력창이 에러가 되고 버튼이 막힌다', (tester) async {
       await _pumpApp(tester, location: '/register');
 
-      await tester.enterText(_field(1), 'noco@umc.com');
+      await tester.enterText(_field(1), 'test@umc.com');
       await tester.pump();
       await tester.tap(find.text('중복 확인').at(1));
       await tester.pumpAndSettle();
 
-      expect(find.text('이미 사용 중인 이메일이에요'), findsOneWidget);
+      expect(find.text('이미 사용 중인 이메일입니다.'), findsOneWidget);
+      final emailButton = find.byType(MovieLogButton).at(1);
+      expect(tester.widget<MovieLogButton>(emailButton).onPressed, isNull);
       expect(_isEnabled(tester, _submitButton), isFalse);
     });
+  });
 
-    testWidgets('마이 화면은 내 평점을 TMDB 영화 정보와 함께 보여준다', (tester) async {
+  group('MovieLogButton', () {
+    testWidgets('width null·double.infinity·고정값에 따라 너비가 달라진다', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                Row(
+                  children: [MovieLogButton(label: '확인', onPressed: () {})],
+                ),
+                MovieLogButton(
+                  label: '전체',
+                  width: double.infinity,
+                  onPressed: () {},
+                ),
+                MovieLogButton(label: '고정', width: 120, onPressed: () {}),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final content = tester.getSize(find.byType(MovieLogButton).at(0)).width;
+      final full = tester.getSize(find.byType(MovieLogButton).at(1)).width;
+      final fixed = tester.getSize(find.byType(MovieLogButton).at(2)).width;
+      expect(content, lessThan(120));
+      expect(
+        full,
+        tester.view.physicalSize.width / tester.view.devicePixelRatio,
+      );
+      expect(fixed, 120);
+    });
+  });
+
+  group('6주차 내가 등록한 평점', () {
+    test('평점과 TMDB 영화를 묶고, 못 찾은 영화는 안내 문구와 함께 남긴다', () async {
+      final viewModel = MyRatingsViewModel(
+        FakeRatingApiService(ratings: [_rating(2, 1), _rating(1, 999)]),
+        _defaultService(),
+        sampleMemberId,
+      );
+
+      await viewModel.load();
+
+      expect(viewModel.status, MyRatingsLoadStatus.success);
+      expect(viewModel.ratings.first.movie?.title, '영화 1');
+      expect(viewModel.ratings.last.movie, isNull);
+      expect(viewModel.message, contains('일부 영화 정보'));
+    });
+
+    test('영화 상세 조회가 실패해도 평점 목록은 남긴다', () async {
+      final tmdb = _defaultService()..failMovieDetail = true;
+      final viewModel = MyRatingsViewModel(
+        FakeRatingApiService(ratings: [_rating(1, 1)]),
+        tmdb,
+        sampleMemberId,
+      );
+
+      await viewModel.load();
+
+      expect(viewModel.status, MyRatingsLoadStatus.success);
+      expect(viewModel.ratings, hasLength(1));
+    });
+
+    test('빈 배열은 Empty, 404·400은 서로 다른 Error 문구', () async {
+      final empty = MyRatingsViewModel(
+        FakeRatingApiService(),
+        _defaultService(),
+        sampleMemberId,
+      );
+      await empty.load();
+      expect(empty.status, MyRatingsLoadStatus.empty);
+
+      final notFound = MyRatingsViewModel(
+        FakeRatingApiService()..failStatus = 404,
+        _defaultService(),
+        sampleMemberId,
+      );
+      await notFound.load();
+      expect(notFound.status, MyRatingsLoadStatus.error);
+      expect(notFound.message, '존재하지 않는 회원입니다.');
+
+      final badRequest = MyRatingsViewModel(
+        FakeRatingApiService()..failStatus = 400,
+        _defaultService(),
+        sampleMemberId,
+      );
+      await badRequest.load();
+      expect(badRequest.message, 'memberId 형식을 다시 확인해 주세요.');
+    });
+
+    testWidgets('마이페이지에서 진입하면 하단 탭 없이 평점 카드를 보여준다', (tester) async {
       await _pumpApp(
         tester,
         location: '/my',
         size: const Size(390, 1600),
-        memberService: FakeMovieLogMemberService(
+        ratingService: FakeRatingApiService(
           ratings: [
-            RatingDto(
-              ratingId: 2,
-              movieId: 1,
-              score: 4,
-              comment: '다시 봐도 명작',
-              createdAt: DateTime(2026, 11, 15),
-            ),
-            RatingDto(
-              ratingId: 1,
-              movieId: 999,
-              score: 5,
-              comment: null,
-              createdAt: DateTime(2026, 11, 15),
-            ),
+            _rating(2, 1, comment: '다시 봐도 좋다'),
+            _rating(1, 2, comment: null),
           ],
         ),
       );
 
-      expect(find.text('내 평점'), findsOneWidget);
+      await tester.tap(find.text('내가 등록한 평점'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(NavigationBar), findsNothing);
       expect(find.text('영화 1'), findsOneWidget);
-      expect(find.text('다시 봐도 명작'), findsOneWidget);
-      // TMDB에서 못 찾은 영화는 movieId로 대신 표시합니다.
-      expect(find.text('영화 #999'), findsOneWidget);
+      expect(find.text('다시 봐도 좋다'), findsOneWidget);
+      expect(find.text('2026.11.15 등록'), findsNWidgets(2));
+
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      expect(find.byType(NavigationBar), findsOneWidget);
     });
   });
 }
