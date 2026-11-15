@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/app/movie_log_app.dart';
 import 'package:movielog/data/services/member_api_service.dart';
+import 'package:movielog/data/services/learning_member_session.dart';
+import 'package:movielog/data/services/fake_movie_service.dart';
 import 'package:movielog/router/app_router.dart';
 
 void main() {
@@ -40,14 +42,16 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('닉네임-check-button')));
     await tester.pumpAndSettle();
     expect(find.text('사용 가능한 닉네임입니다.'), findsOneWidget);
+    expect(find.text('사용 가능한 닉네임입니다.'), findsOneWidget);
 
     await tester.enterText(fields.at(1), 'nova@example.com');
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('이메일-check-button')));
     await tester.pumpAndSettle();
     expect(find.text('사용 가능한 이메일입니다.'), findsOneWidget);
+    expect(find.text('사용 가능한 이메일입니다.'), findsOneWidget);
 
-    await tester.enterText(fields.at(2), 'password123');
+    await tester.enterText(fields.at(2), 'Password1!');
     await tester.tap(find.byType(Checkbox));
     await tester.pump();
 
@@ -179,6 +183,83 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('사용 가능한 닉네임입니다.'), findsNothing);
+  });
+
+  testWidgets('회원가입 성공 memberId를 세션에 저장하고 영화 화면으로 이동한다', (tester) async {
+    final session = LearningMemberSession();
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          final Map<String, dynamic> data = options.path == '/auth/login'
+              ? {
+                  'isSuccess': true,
+                  'code': 'COMMON200',
+                  'message': '로그인 성공',
+                  'result': {'accessToken': 'test-access-token'},
+                }
+              : options.method == 'POST'
+              ? {
+                  'isSuccess': true,
+                  'code': 'COMMON201',
+                  'message': '회원가입 성공',
+                  'result': {
+                    'memberId': 27,
+                    'email': 'nova@example.com',
+                    'nickname': '노바',
+                  },
+                }
+              : {'available': true};
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: options,
+              statusCode: options.path == '/members' ? 201 : 200,
+              data: data,
+            ),
+          );
+        },
+      ),
+    );
+    final router = AppRouter.createRouter(
+      initialLocation: '/register',
+      memberApiService: MemberApiService(dio),
+      memberSession: session,
+      movieService: const FakeMovieService(delay: Duration.zero),
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(MovieLogApp(router: router));
+
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), '노바');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('닉네임-check-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('사용 가능한 닉네임입니다.'), findsOneWidget);
+    await tester.enterText(fields.at(1), 'nova@example.com');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('이메일-check-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('사용 가능한 이메일입니다.'), findsOneWidget);
+    await tester.enterText(fields.at(2), 'Password1!');
+    final termsCheckbox = find.byType(Checkbox);
+    await tester.ensureVisible(termsCheckbox);
+    await tester.pumpAndSettle();
+    await tester.tap(termsCheckbox);
+    await tester.pump();
+    final signUpButton = find.byKey(const ValueKey('sign-up-button'));
+    await tester.ensureVisible(signUpButton);
+    await tester.pumpAndSettle();
+    final filledButton = tester.widget<FilledButton>(
+      find.descendant(of: signUpButton, matching: find.byType(FilledButton)),
+    );
+    expect(filledButton.onPressed, isNotNull);
+    await tester.tap(signUpButton);
+    await tester.pumpAndSettle();
+
+    expect(session.memberId, 27);
+    expect(session.accessToken, 'test-access-token');
+    expect(session.isAuthenticated, isTrue);
+    expect(router.routeInformationProvider.value.uri.path, '/movies');
   });
 }
 

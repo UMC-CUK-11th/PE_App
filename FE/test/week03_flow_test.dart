@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/app/movie_log_app.dart';
 import 'package:movielog/data/services/fake_movie_service.dart';
 import 'package:movielog/data/services/movie_list_preferences.dart';
+import 'package:movielog/data/services/learning_member_session.dart';
 import 'package:movielog/router/app_router.dart';
 
 void main() {
@@ -14,6 +15,7 @@ void main() {
       initialLocation: initialLocation,
       movieService: const FakeMovieService(delay: Duration.zero),
       movieListPreferences: const _MemoryMovieListPreferences(),
+      memberSession: LearningMemberSession(initialMemberId: 1),
     );
     addTearDown(router.dispose);
     await tester.pumpWidget(MovieLogApp(router: router));
@@ -148,18 +150,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('영화는 어떠셨나요?'), findsOneWidget);
 
-    final confirmButton = find.widgetWithText(ElevatedButton, '확인');
-    expect(tester.widget<ElevatedButton>(confirmButton).onPressed, isNull);
+    final confirmButton = find.widgetWithText(FilledButton, '확인');
+    expect(tester.widget<FilledButton>(confirmButton).onPressed, isNull);
 
     final ratingBar = find.byType(RatingBar);
-    tester.widget<RatingBar>(ratingBar).onRatingUpdate(3.5);
+    tester.widget<RatingBar>(ratingBar).onRatingUpdate(3);
     await tester.pumpAndSettle();
     expect(find.text('다시 선택하기'), findsOneWidget);
-    expect(tester.widget<ElevatedButton>(confirmButton).onPressed, isNotNull);
+    expect(tester.widget<FilledButton>(confirmButton).onPressed, isNotNull);
 
     await tester.tap(find.text('다시 선택하기'));
     await tester.pumpAndSettle();
-    expect(tester.widget<ElevatedButton>(confirmButton).onPressed, isNull);
+    expect(tester.widget<FilledButton>(confirmButton).onPressed, isNull);
   });
 }
 

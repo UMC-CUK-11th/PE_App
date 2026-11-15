@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 
 import '../data/models/member_rating.dart';
 import '../data/models/tmdb_movie_dto.dart';
+import '../data/models/rating_requests.dart';
 import '../data/services/member_api_service.dart';
 import '../data/services/tmdb_movie_service.dart';
 
@@ -39,6 +41,12 @@ class MemberRatingsViewModel extends ChangeNotifier {
 
   MemberRatingsLoadState state = MemberRatingsLoadState.loading;
   List<MemberRatingItem> items = const [];
+  final Set<int> selectedRatingIds = {};
+  final Set<int> busyRatingIds = {};
+  bool isSelectionMode = false;
+  bool isDeletingSelected = false;
+  String? message;
+  String? refreshWarning;
   bool _disposed = false;
 
   Future<void> load() async {
@@ -63,6 +71,115 @@ class MemberRatingsViewModel extends ChangeNotifier {
       state = MemberRatingsLoadState.error;
     }
     _notifyListeners();
+  }
+
+  void startSelectionMode() {
+    if (isSelectionMode) return;
+    isSelectionMode = true;
+    _notifyListeners();
+  }
+
+  void cancelSelectionMode() {
+    isSelectionMode = false;
+    selectedRatingIds.clear();
+    _notifyListeners();
+  }
+
+  void toggleSelection(int ratingId) {
+    if (!isSelectionMode) return;
+    if (!selectedRatingIds.add(ratingId)) {
+      selectedRatingIds.remove(ratingId);
+    }
+    _notifyListeners();
+  }
+
+  Future<void> updateRating({
+    required int ratingId,
+    required int score,
+    String? comment,
+  }) async {
+    if (busyRatingIds.contains(ratingId)) return;
+    busyRatingIds.add(ratingId);
+    message = null;
+    _notifyListeners();
+    try {
+      await memberApiService.updateRating(
+        ratingId: ratingId,
+        request: UpdateRatingRequest(score: score, comment: comment),
+      );
+    } on DioException catch (error) {
+      message = memberApiErrorMessage(error);
+      if (_shouldRefreshAfterWriteError(error)) await load();
+      rethrow;
+    } finally {
+      busyRatingIds.remove(ratingId);
+      _notifyListeners();
+    }
+    await _refreshAfterWrite();
+  }
+
+  Future<void> deleteRating(int ratingId) async {
+    if (busyRatingIds.contains(ratingId)) return;
+    busyRatingIds.add(ratingId);
+    message = null;
+    _notifyListeners();
+    try {
+      await memberApiService.deleteRating(ratingId: ratingId);
+    } on DioException catch (error) {
+      message = memberApiErrorMessage(error);
+      if (_shouldRefreshAfterWriteError(error)) await load();
+      rethrow;
+    } finally {
+      busyRatingIds.remove(ratingId);
+      _notifyListeners();
+    }
+    await _refreshAfterWrite();
+  }
+
+  Future<int> deleteSelectedRatings() async {
+    if (isDeletingSelected || selectedRatingIds.isEmpty) return 0;
+    isDeletingSelected = true;
+    message = null;
+    _notifyListeners();
+    var failed = 0;
+    try {
+      for (final ratingId in selectedRatingIds.toList()) {
+        try {
+          await memberApiService.deleteRating(ratingId: ratingId);
+          selectedRatingIds.remove(ratingId);
+          items = items
+              .where((item) => item.rating.ratingId != ratingId)
+              .toList(growable: false);
+        } on DioException {
+          failed++;
+        }
+      }
+    } finally {
+      isDeletingSelected = false;
+      if (selectedRatingIds.isEmpty) isSelectionMode = false;
+      _notifyListeners();
+    }
+    await _refreshAfterWrite();
+    if (failed > 0) {
+      message = '$failed개 항목을 삭제하지 못했습니다. 선택된 항목을 다시 확인해 주세요.';
+      _notifyListeners();
+    }
+    return failed;
+  }
+
+  Future<void> _refreshAfterWrite() async {
+    await load();
+    if (state == MemberRatingsLoadState.error) {
+      refreshWarning = '저장은 완료됐지만 목록을 불러오지 못했습니다. 조회만 다시 시도해 주세요.';
+      _notifyListeners();
+    } else {
+      refreshWarning = null;
+    }
+  }
+
+  bool _shouldRefreshAfterWriteError(DioException error) {
+    final code = memberApiErrorCode(error);
+    return code == 'AUTH403_1' || code == 'COMMON403' || code == 'COMMON404';
   }
 
   Future<List<MemberRating>> _fetchAllRatings() async {

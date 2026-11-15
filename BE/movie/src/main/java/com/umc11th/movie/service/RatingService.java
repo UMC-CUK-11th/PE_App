@@ -5,6 +5,7 @@ import com.umc11th.movie.dto.RatingResponse;
 import com.umc11th.movie.dto.UpdateRatingRequest;
 import com.umc11th.movie.entity.Member;
 import com.umc11th.movie.entity.Rating;
+import com.umc11th.movie.exception.AuthException;
 import com.umc11th.movie.repository.MemberRepository;
 import com.umc11th.movie.repository.RatingRepository;
 import lombok.RequiredArgsConstructor;
@@ -79,10 +80,7 @@ public class RatingService {
                 ));
 
         if (!rating.getMember().getMemberId().equals(memberId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "본인이 작성한 평점만 수정하거나 삭제할 수 있습니다."
-            );
+            throw AuthException.forbiddenRating();
         }
         return rating;
     }

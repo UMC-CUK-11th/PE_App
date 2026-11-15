@@ -1,8 +1,11 @@
 package com.umc11th.movie.controller;
 
+import com.umc11th.movie.auth.JwtTokenProvider;
 import com.umc11th.movie.dto.RatingResponse;
+import com.umc11th.movie.exception.AuthException;
 import com.umc11th.movie.service.RatingService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.HttpStatus;
@@ -36,6 +39,14 @@ class RatingControllerTest {
     @MockitoBean
     private RatingService ratingService;
 
+    @MockitoBean
+    private JwtTokenProvider jwtTokenProvider;
+
+    @BeforeEach
+    void setUpAuthentication() {
+        when(jwtTokenProvider.getMemberId("valid-token")).thenReturn(1L);
+    }
+
     @Test
     void forwardsPaginationParameters() throws Exception {
         LocalDateTime now = LocalDateTime.of(2026, 10, 28, 12, 0);
@@ -60,7 +71,8 @@ class RatingControllerTest {
         when(ratingService.create(org.mockito.ArgumentMatchers.eq(1L), any()))
                 .thenReturn(7L);
 
-        mockMvc.perform(post("/members/{memberId}/ratings", 1)
+        mockMvc.perform(post("/ratings")
+                        .header("Authorization", "Bearer valid-token")
                         .contentType("application/json")
                         .content("""
                                 {
@@ -77,7 +89,8 @@ class RatingControllerTest {
 
     @Test
     void rejectsOutOfRangeScore() throws Exception {
-        mockMvc.perform(post("/members/{memberId}/ratings", 1)
+        mockMvc.perform(post("/ratings")
+                        .header("Authorization", "Bearer valid-token")
                         .contentType("application/json")
                         .content("""
                                 {
@@ -100,7 +113,8 @@ class RatingControllerTest {
                 any()
         );
 
-        mockMvc.perform(patch("/members/{memberId}/ratings/{ratingId}", 1, 7)
+        mockMvc.perform(patch("/ratings/{ratingId}", 7)
+                        .header("Authorization", "Bearer valid-token")
                         .contentType("application/json")
                         .content("""
                                 {
@@ -116,7 +130,8 @@ class RatingControllerTest {
 
     @Test
     void deletesRatingWithNoContent() throws Exception {
-        mockMvc.perform(delete("/members/{memberId}/ratings/{ratingId}", 1, 7))
+        mockMvc.perform(delete("/ratings/{ratingId}", 7)
+                        .header("Authorization", "Bearer valid-token"))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
 
@@ -128,7 +143,8 @@ class RatingControllerTest {
         when(ratingService.create(org.mockito.ArgumentMatchers.eq(1L), any()))
                 .thenThrow(new IllegalArgumentException("이미 이 영화에 평점을 남기셨습니다."));
 
-        mockMvc.perform(post("/members/{memberId}/ratings", 1)
+        mockMvc.perform(post("/ratings")
+                        .header("Authorization", "Bearer valid-token")
                         .contentType("application/json")
                         .content("""
                                 {
@@ -150,7 +166,8 @@ class RatingControllerTest {
                         "Duplicate entry for key 'uk_rating_member_movie'"
                 ));
 
-        mockMvc.perform(post("/members/{memberId}/ratings", 1)
+        mockMvc.perform(post("/ratings")
+                        .header("Authorization", "Bearer valid-token")
                         .contentType("application/json")
                         .content("""
                                 {
@@ -167,16 +184,14 @@ class RatingControllerTest {
 
     @Test
     void rejectsUpdateByAnotherMemberWithForbiddenResponse() throws Exception {
-        doThrow(new ResponseStatusException(
-                HttpStatus.FORBIDDEN,
-                "본인이 작성한 평점만 수정하거나 삭제할 수 있습니다."
-        )).when(ratingService).update(
+        doThrow(AuthException.forbiddenRating()).when(ratingService).update(
                 org.mockito.ArgumentMatchers.eq(7L),
                 org.mockito.ArgumentMatchers.eq(1L),
                 any()
         );
 
-        mockMvc.perform(patch("/members/{memberId}/ratings/{ratingId}", 1, 7)
+        mockMvc.perform(patch("/ratings/{ratingId}", 7)
+                        .header("Authorization", "Bearer valid-token")
                         .contentType("application/json")
                         .content("""
                                 {
@@ -186,7 +201,7 @@ class RatingControllerTest {
                                 """))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.isSuccess").value(false))
-                .andExpect(jsonPath("$.code").value("COMMON403"));
+                .andExpect(jsonPath("$.code").value("AUTH403_1"));
     }
 
     @Test
@@ -196,10 +211,37 @@ class RatingControllerTest {
                 "존재하지 않는 평점입니다."
         )).when(ratingService).delete(999L, 1L);
 
-        mockMvc.perform(delete("/members/{memberId}/ratings/{ratingId}", 1, 999))
+        mockMvc.perform(delete("/ratings/{ratingId}", 999)
+                        .header("Authorization", "Bearer valid-token"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.isSuccess").value(false))
                 .andExpect(jsonPath("$.code").value("COMMON404"))
                 .andExpect(jsonPath("$.message").value("존재하지 않는 평점입니다."));
+    }
+
+    @Test
+    void rejectsRatingCreationWithoutToken() throws Exception {
+        mockMvc.perform(post("/ratings")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "movieId": 550,
+                                  "score": 5
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH401_2"));
+    }
+
+    @Test
+    void getsAuthenticatedMembersRatings() throws Exception {
+        when(ratingService.getRatings(1L, 0, 10)).thenReturn(List.of());
+
+        mockMvc.perform(get("/members/me/ratings")
+                        .header("Authorization", "Bearer valid-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+
+        verify(ratingService).getRatings(1L, 0, 10);
     }
 }

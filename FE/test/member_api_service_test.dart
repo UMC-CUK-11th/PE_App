@@ -1,6 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/data/services/member_api_service.dart';
+import 'package:movielog/data/services/learning_member_session.dart';
+import 'package:movielog/data/models/sign_up_models.dart';
+import 'package:movielog/data/models/rating_requests.dart';
 
 void main() {
   test('닉네임과 이메일 available 응답을 읽는다', () async {
@@ -39,6 +42,87 @@ void main() {
     expect(ratings.single.score, 5);
     expect(capturedRequest?.path, '/members/1/ratings');
     expect(capturedRequest?.queryParameters, {'page': 0, 'size': 10});
+  });
+
+  test('회원가입 성공 응답에서 memberId를 읽는다', () async {
+    RequestOptions? request;
+    final service = MemberApiService(
+      _fakeDio((options) {
+        request = options;
+        return {
+          'isSuccess': true,
+          'code': 'COMMON201',
+          'message': '회원가입에 성공했습니다.',
+          'result': {
+            'memberId': 7,
+            'email': 'nova@example.com',
+            'nickname': '노바',
+          },
+        };
+      }),
+    );
+
+    final response = await service.signUp(
+      const CreateMemberRequest(
+        email: 'nova@example.com',
+        password: 'Password1!',
+        nickname: '노바',
+      ),
+    );
+
+    expect(response.result?.memberId, 7);
+    expect(request?.method, 'POST');
+    expect(request?.path, '/members');
+  });
+
+  test('평점 등록·수정·삭제는 movieId와 ratingId를 구분한다', () async {
+    final requests = <RequestOptions>[];
+    final session = LearningMemberSession(
+      initialMemberId: 7,
+      initialAccessToken: 'test-access-token',
+    );
+    final service = MemberApiService(
+      _fakeDio((options) {
+        requests.add(options);
+        if (options.method == 'POST') {
+          return {
+            'isSuccess': true,
+            'code': 'COMMON201',
+            'message': '등록 성공',
+            'result': 31,
+          };
+        }
+        if (options.method == 'PATCH') {
+          return {
+            'isSuccess': true,
+            'code': 'COMMON200',
+            'message': '수정 성공',
+            'result': null,
+          };
+        }
+        return null;
+      }),
+      authSession: session,
+    );
+
+    await service.createRating(
+      request: const CreateRatingRequest(movieId: 550, score: 5, comment: '최고'),
+    );
+    await service.updateRating(
+      ratingId: 31,
+      request: const UpdateRatingRequest(score: 4, comment: ''),
+    );
+    await service.deleteRating(ratingId: 31);
+
+    expect(requests[0].path, '/ratings');
+    expect(requests[0].data, containsPair('movieId', 550));
+    expect(requests[0].headers['Authorization'], 'Bearer test-access-token');
+    expect(requests[1].path, '/ratings/31');
+    expect(requests[1].data, containsPair('comment', null));
+    expect(requests[1].headers['Authorization'], 'Bearer test-access-token');
+    expect(requests[2].path, '/ratings/31');
+    expect(requests[2].method, 'DELETE');
+    expect(requests[2].headers['Authorization'], 'Bearer test-access-token');
   });
 }
 

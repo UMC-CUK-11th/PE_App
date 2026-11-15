@@ -3,17 +3,18 @@ import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
-import '../models/movie.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/common_app_bar.dart';
 import '../widgets/rating_dialog.dart';
 import '../widgets/movie_poster.dart';
+import '../view_models/movie_detail_view_model.dart';
+import '../view_models/sign_up_view_model.dart';
 
 class MovieDetailScreen extends StatefulWidget {
-  const MovieDetailScreen({required this.movie, super.key});
+  const MovieDetailScreen({required this.viewModel, super.key});
 
-  final Movie movie;
+  final MovieDetailViewModel viewModel;
 
   @override
   State<MovieDetailScreen> createState() => _MovieDetailScreenState();
@@ -22,6 +23,12 @@ class MovieDetailScreen extends StatefulWidget {
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
   bool _isFavorite = false;
   double _myRating = 0;
+
+  @override
+  void dispose() {
+    widget.viewModel.dispose();
+    super.dispose();
+  }
 
   void _goBack() {
     if (context.canPop()) {
@@ -44,27 +51,43 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   }
 
   Future<void> _openRatingDialog() async {
-    final rating = await showDialog<double>(
+    if (widget.viewModel.memberId == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('먼저 회원가입을 완료해 주세요.')));
+      return;
+    }
+    final saved = await showDialog<bool>(
       context: context,
-      builder: (context) =>
-          RatingDialog(movieId: widget.movie.id, initialRating: _myRating),
+      barrierDismissible: false,
+      builder: (context) => RatingDialog(
+        movieId: widget.viewModel.movie.id,
+        initialScore: _myRating.toInt(),
+        onSubmit: (score, comment) async {
+          await widget.viewModel.createRating(score: score, comment: comment);
+          if (widget.viewModel.submitStatus != SubmitStatus.success) {
+            throw StateError(
+              widget.viewModel.submitMessage ?? '평점 저장에 실패했습니다.',
+            );
+          }
+        },
+      ),
     );
-    if (rating == null || !mounted) return;
+    if (saved != true || !mounted) return;
 
-    setState(() => _myRating = rating);
+    setState(() => _myRating = 0);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
-          content: Text('내 평점 ${rating.toStringAsFixed(1)}점을 저장했습니다.'),
+          content: const Text('평점을 등록했습니다. 마이페이지의 "내가 등록한 평점"에서 확인할 수 있습니다.'),
         ),
       );
   }
 
   @override
   Widget build(BuildContext context) {
-    final movie = widget.movie;
+    final movie = widget.viewModel.movie;
     return Scaffold(
       appBar: CommonAppBar(
         title: 'Cinema Archive',
@@ -100,48 +123,63 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       bottomNavigationBar: SafeArea(
         top: false,
         minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: SizedBox(
-                height: 48,
-                child: OutlinedButton.icon(
-                  key: const ValueKey('favorite-button'),
-                  onPressed: _toggleFavorite,
-                  icon: Icon(
-                    _isFavorite ? Icons.bookmark : Icons.bookmark_border,
-                    size: 18,
-                  ),
-                  label: Text(_isFavorite ? '즐겨찾기됨' : '즐겨찾기'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.violet,
-                    side: const BorderSide(color: AppColors.violet),
-                    shape: const StadiumBorder(),
-                  ),
+            if (widget.viewModel.memberId == null) ...[
+              const Text(
+                '평점을 등록하려면 먼저 회원가입을 완료해 주세요.',
+                style: TextStyle(
+                  color: AppColors.onSurfaceVariant,
+                  fontSize: 12,
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: SizedBox(
-                height: 48,
-                child: ElevatedButton.icon(
-                  key: const ValueKey('open-rating-dialog-button'),
-                  onPressed: _openRatingDialog,
-                  icon: const Icon(Icons.star_outline, size: 18),
-                  label: Text(
-                    _myRating == 0
-                        ? '평점 남기기'
-                        : '내 평점 ${_myRating.toStringAsFixed(1)}',
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.violet,
-                    foregroundColor: AppColors.white,
-                    shape: const StadiumBorder(),
-                    elevation: 0,
+              const SizedBox(height: 8),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('favorite-button'),
+                      onPressed: _toggleFavorite,
+                      icon: Icon(
+                        _isFavorite ? Icons.bookmark : Icons.bookmark_border,
+                        size: 18,
+                      ),
+                      label: Text(_isFavorite ? '즐겨찾기됨' : '즐겨찾기'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.violet,
+                        side: const BorderSide(color: AppColors.violet),
+                        shape: const StadiumBorder(),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      key: const ValueKey('open-rating-dialog-button'),
+                      onPressed: widget.viewModel.memberId == null
+                          ? null
+                          : _openRatingDialog,
+                      icon: const Icon(Icons.star_outline, size: 18),
+                      label: Text(
+                        _myRating == 0 ? '평점 남기기' : '내 평점 ${_myRating.toInt()}',
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.violet,
+                        foregroundColor: AppColors.white,
+                        shape: const StadiumBorder(),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

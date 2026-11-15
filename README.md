@@ -59,5 +59,7 @@ export DB_URL=jdbc:mysql://localhost:3306/umc11th_movie
 export DB_USERNAME=root
 export DB_PASSWORD='실제_MySQL_비밀번호'
 export CORS_ALLOWED_ORIGIN=http://localhost:5173
+export JWT_SECRET='32바이트_이상의_충분히_긴_비밀키'
+export JWT_ACCESS_EXPIRATION=3600
 ./gradlew bootRun
 ```

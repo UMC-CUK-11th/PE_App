@@ -1,5 +1,6 @@
 package com.umc11th.movie.controller;
 
+import com.umc11th.movie.auth.LoginMember;
 import com.umc11th.movie.dto.ApiResponse;
 import com.umc11th.movie.dto.EmailCheckResponse;
 import com.umc11th.movie.dto.MemberResponse;
@@ -26,6 +27,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class MemberController {
 
     private final MemberService memberService;
+
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<MemberResponse>> getMe(
+            @LoginMember Long memberId
+    ) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                "내 정보 조회에 성공했습니다.",
+                memberService.getMe(memberId)
+        ));
+    }
 
     @GetMapping("/nickname/{nickname}")
     public NicknameCheckResponse checkNickname(

@@ -19,8 +19,8 @@ class MovieRatingInput extends StatelessWidget {
       key: ValueKey(rating),
       child: RatingBar.builder(
         initialRating: rating,
-        minRating: 0.5,
-        allowHalfRating: true,
+        minRating: 1,
+        allowHalfRating: false,
         itemCount: 5,
         itemSize: 40,
         glow: false,
