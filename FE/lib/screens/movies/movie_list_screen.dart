@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -27,8 +29,13 @@ class _MovieListScreenState extends State<MovieListScreen> {
     final viewModel = context.read<MovieListViewModel>();
     final succeeded = await viewModel.refresh();
     // 최근 성공 목록이 있을 때만 목록을 유지한 채 재시도 Dialog를 띄웁니다.
-    if (succeeded || !mounted || viewModel.movies.isEmpty) return;
+    // 새로고침 스피너가 Dialog 뒤에서 계속 돌지 않도록 기다리지 않습니다.
+    if (!succeeded && mounted && viewModel.movies.isNotEmpty) {
+      unawaited(_showRetryDialog());
+    }
+  }
 
+  Future<void> _showRetryDialog() async {
     final retry = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(

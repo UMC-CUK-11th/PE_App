@@ -80,6 +80,8 @@ class MovieListViewModel extends ChangeNotifier {
       final validIds = {for (final genre in genres) genre.id};
       final restored = savedIds.where(validIds.contains).toList();
       selectedGenreIds = restored.isEmpty ? null : restored;
+      // 영화 목록을 기다리는 동안에도 장르 Chip이 보이도록 알립니다.
+      notifyListeners();
     } on ParallelWaitError<dynamic, dynamic> catch (error) {
       if (!_isCurrent(version)) return;
       debugPrint('장르 로드 실패: ${error.errors}');
@@ -98,8 +100,9 @@ class MovieListViewModel extends ChangeNotifier {
         ? null
         : genres.map((genre) => genre.id).where(genreIds.contains).toList();
     movies = const [];
+    final version = _startLoading();
     await _genrePreference.save(selectedGenreIds ?? const []);
-    await _loadMovies(_startLoading());
+    await _loadMovies(version);
   }
 
   /// Error 화면의 재시도. 장르 목록이 없으면 처음부터 다시 불러옵니다.
