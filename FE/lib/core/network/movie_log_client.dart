@@ -2,15 +2,18 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-/// MovieLog 자체 백엔드 Client. TMDB Client와 인증·주소가 달라 따로 둡니다.
+/// 워크북 자체 백엔드 Client. TMDB Client와 baseUrl·헤더가 달라 절대 합치지 않습니다.
+/// 로컬 백엔드로 바꿔 볼 때는 .env의 MOVIELOG_API_BASE_URL을 지정합니다.
 Dio createMovieLogClient() {
-  final baseUrl = dotenv.env['MOVIELOG_API_BASE_URL'] ?? '';
+  final override = dotenv.isInitialized
+      ? dotenv.env['MOVIELOG_API_BASE_URL'] ?? ''
+      : '';
 
   final dio = Dio(
     BaseOptions(
-      baseUrl: baseUrl.isEmpty ? 'http://localhost:8080' : baseUrl,
-      connectTimeout: const Duration(seconds: 5),
-      receiveTimeout: const Duration(seconds: 5),
+      baseUrl: override.isEmpty ? 'https://workbook.devnoco.com' : override,
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
     ),
   );
 

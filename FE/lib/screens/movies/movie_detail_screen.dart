@@ -34,7 +34,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     super.initState();
     final movieId = widget.movieId;
     if (widget.movie == null && movieId != null) {
-      _movieFuture = context.read<TmdbMovieService>().fetchMovie(movieId)
+      _movieFuture = context.read<TmdbMovieService>().fetchMovieDetail(movieId)
         ..ignore();
     }
   }
