@@ -105,6 +105,9 @@ String tmdbErrorMessage(Object error) {
     if (error.response?.statusCode == 401) {
       return 'TMDB 인증에 실패했습니다. .env의 토큰을 확인해 주세요.';
     }
+    if (error.response?.statusCode == 404) {
+      return '영화를 찾을 수 없습니다.';
+    }
     if (error.error is String &&
         (error.error as String).startsWith('프로젝트 .env')) {
       return error.error as String;

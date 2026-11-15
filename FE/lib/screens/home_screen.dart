@@ -196,7 +196,7 @@ class _FeaturedMovieCard extends StatelessWidget {
                         vertical: 9,
                       ),
                       child: Text(
-                        '추천 신작',
+                        '추천 영화',
                         style: TextStyle(
                           color: AppColors.white,
                           fontSize: 12,

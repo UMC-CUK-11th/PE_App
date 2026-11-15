@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/movie.dart';
+import '../models/tmdb_movie_dto.dart';
 import '../services/tmdb_client.dart';
 import '../services/tmdb_movie_service.dart';
 
@@ -22,7 +23,9 @@ class MovieHomeViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       final popular = await _service.fetchPopular(cancelToken: _cancelToken);
-      final genres = await _service.fetchGenres(cancelToken: _cancelToken);
+      final genres = await _service
+          .fetchGenres(cancelToken: _cancelToken)
+          .catchError((Object _) => <TmdbGenreDto>[]);
       if (_disposed) return;
       movies = List.unmodifiable(
         popular.results.take(5).map((m) => m.toMovie(genres)),

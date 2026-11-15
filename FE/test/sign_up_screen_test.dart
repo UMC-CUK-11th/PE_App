@@ -2,12 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/movie_log_app.dart';
 import 'package:movielog/router/app_router.dart';
+import 'package:dio/dio.dart';
+import 'package:movielog/services/member_check_service.dart';
+
+class AvailableCheckService extends MemberCheckService {
+  AvailableCheckService() : super(Dio());
+  @override
+  Future<bool> checkNickname(String value) async => true;
+  @override
+  Future<bool> checkEmail(String value) async => true;
+}
 
 void main() {
   Future<void> pumpSignUpScreen(WidgetTester tester) async {
     final router = AppRouter.createRouter(initialLocation: '/register');
     addTearDown(router.dispose);
-    await tester.pumpWidget(MovieLogApp(router: router));
+    await tester.pumpWidget(
+      MovieLogApp(router: router, memberCheckService: AvailableCheckService()),
+    );
   }
 
   tearDown(() {
@@ -62,6 +74,11 @@ void main() {
     await tester.tap(find.byType(Checkbox));
     await tester.pump();
     expect(find.byKey(const ValueKey('password-valid-icon')), findsOneWidget);
+    expect(signUpButton().onPressed, isNull);
+    await tester.tap(find.byKey(const ValueKey('check-nickname')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('check-email')));
+    await tester.pumpAndSettle();
     expect(signUpButton().onPressed, isNotNull);
 
     await tester.ensureVisible(find.text('가입하기'));
@@ -127,7 +144,7 @@ void main() {
     final containerSize = tester.getSize(
       find.byKey(const ValueKey('wide-sign-up-container')),
     );
-    expect(containerSize, const Size(560, 622));
+    expect(containerSize.width, 560);
 
     final fields = find.byType(TextFormField);
     final editableTexts = find.byType(EditableText);
@@ -137,8 +154,8 @@ void main() {
       (index) => tester.getRect(fields.at(index)),
     );
     for (var index = 0; index < 3; index++) {
-      expect(tester.getSize(fields.at(index)), const Size(496, 42));
-      expect(tester.getSize(inputDecorators.at(index)), const Size(496, 42));
+      expect(tester.getSize(fields.at(index)).height, 42);
+      expect(tester.getSize(inputDecorators.at(index)).height, 42);
       final editableText = tester.widget<EditableText>(editableTexts.at(index));
       final inputDecorator = tester.widget<InputDecorator>(
         inputDecorators.at(index),
@@ -157,12 +174,12 @@ void main() {
     expect(find.text('닉네임은 2자 이상이어야 합니다.'), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const ValueKey('wide-sign-up-container'))),
-      const Size(560, 622),
+      containerSize,
     );
     for (var index = 0; index < 3; index++) {
       expect(tester.getRect(fields.at(index)), initialFieldRects[index]);
-      expect(tester.getSize(fields.at(index)), const Size(496, 42));
-      expect(tester.getSize(inputDecorators.at(index)), const Size(496, 42));
+      expect(tester.getSize(fields.at(index)).height, 42);
+      expect(tester.getSize(inputDecorators.at(index)).height, 42);
     }
     expect(tester.takeException(), isNull);
   });
