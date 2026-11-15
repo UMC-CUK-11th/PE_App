@@ -15,6 +15,7 @@ class MovieLogTextFormField extends StatelessWidget {
     required this.textInputAction,
     this.keyboardType,
     this.externalErrorText,
+    this.readOnly = false,
     this.onFieldSubmitted,
     this.isCompact = false,
     this.isValid = false,
@@ -27,6 +28,7 @@ class MovieLogTextFormField extends StatelessWidget {
   });
 
   final String? externalErrorText;
+  final bool readOnly;
   final String label;
   final String hintText;
   final TextEditingController controller;
@@ -61,6 +63,7 @@ class MovieLogTextFormField extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         TextFormField(
+          readOnly: readOnly,
           controller: controller,
           focusNode: focusNode,
           validator: (value) => validator(value) ?? externalErrorText,

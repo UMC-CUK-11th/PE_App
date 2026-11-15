@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../models/movie.dart';
+import '../services/rating_api_service.dart';
+import '../view_models/learning_member_session.dart';
+import '../view_models/movie_detail_view_model.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/common_app_bar.dart';
@@ -21,7 +25,6 @@ class MovieDetailScreen extends StatefulWidget {
 
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
   bool _isFavorite = false;
-  double _myRating = 0;
 
   void _goBack() {
     if (context.canPop()) {
@@ -44,19 +47,24 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   }
 
   Future<void> _openRatingDialog() async {
-    final rating = await showDialog<double>(
-      context: context,
-      builder: (context) => RatingDialog(initialRating: _myRating),
+    final viewModel = MovieDetailViewModel(
+      widget.movie.id,
+      context.read<RatingApiService>(),
+      context.read<LearningMemberSession>(),
     );
-    if (rating == null || !mounted) return;
+    final saved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => RatingDialog(onSubmit: viewModel.register),
+    );
+    if (saved != true || !mounted) return;
 
-    setState(() => _myRating = rating);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
-          content: Text('내 평점 ${rating.toStringAsFixed(1)}점을 저장했습니다.'),
+          content: const Text('평점을 저장했습니다.'),
         ),
       );
   }
@@ -64,6 +72,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final movie = widget.movie;
+    final canRate = context.watch<LearningMemberSession?>()?.memberId != null;
     return Scaffold(
       appBar: CommonAppBar(
         title: 'Cinema Archive',
@@ -126,13 +135,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                 height: 48,
                 child: ElevatedButton.icon(
                   key: const ValueKey('open-rating-dialog-button'),
-                  onPressed: _openRatingDialog,
+                  onPressed: canRate ? _openRatingDialog : null,
                   icon: const Icon(Icons.star_outline, size: 18),
-                  label: Text(
-                    _myRating == 0
-                        ? '평점 남기기'
-                        : '내 평점 ${_myRating.toStringAsFixed(1)}',
-                  ),
+                  label: const Text('평점 남기기'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.violet,
                     foregroundColor: AppColors.white,
@@ -149,6 +154,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (!canRate)
+              TextButton(
+                onPressed: () => context.push('/register'),
+                child: const Text('평점을 남기려면 회원가입을 완료해 주세요.'),
+              ),
             SizedBox(height: 585, child: TmdbPoster(movie: movie)),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),

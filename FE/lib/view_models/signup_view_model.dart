@@ -1,9 +1,13 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
-import '../services/member_check_service.dart';
+import '../services/sign_up_service.dart';
+import '../models/common_response.dart';
+import '../models/member_models.dart';
 
 enum CheckStatus { idle, checking, available, duplicated, error }
+
+enum SubmitStatus { idle, submitting, success, error }
 
 // 두 입력란이 독립적인 요청 버전과 중복값을 기억합니다.
 class _CheckField {
@@ -16,10 +20,14 @@ class _CheckField {
 
 class SignUpViewModel extends ChangeNotifier {
   SignUpViewModel(this._service);
-  final MemberCheckService _service;
+  final SignUpService _service;
   final _nickname = _CheckField();
   final _email = _CheckField();
   bool _disposed = false;
+  SubmitStatus submitStatus = SubmitStatus.idle;
+  String? passwordErrorText;
+  String? snackbarMessage;
+  bool get isSubmitting => submitStatus == SubmitStatus.submitting;
 
   CheckStatus get nicknameCheckStatus => _nickname.status;
   CheckStatus get emailCheckStatus => _email.status;
@@ -48,6 +56,7 @@ class SignUpViewModel extends ChangeNotifier {
 
   bool _canCheck(_CheckField field, String? validation) =>
       validation == null &&
+      !isSubmitting &&
       field.status != CheckStatus.checking &&
       field.status != CheckStatus.duplicated;
   bool get canCheckNickname =>
@@ -57,6 +66,7 @@ class SignUpViewModel extends ChangeNotifier {
   void _changed(_CheckField field, String value, String label) {
     final current = value.trim();
     if (current == field.current) return;
+    _clearSubmitError();
     field.current = current;
     field.version++; // 입력이 바뀌면 이전 요청의 늦은 응답은 무효입니다.
     final duplicated =
@@ -95,16 +105,61 @@ class SignUpViewModel extends ChangeNotifier {
       field.status = available ? CheckStatus.available : CheckStatus.duplicated;
       field.error = available ? null : '이미 사용 중인 $label입니다.';
       if (!available) field.duplicated = requested;
-    } on DioException {
+    } on DioException catch (error) {
       if (_disposed || version != field.version) return;
       field.status = CheckStatus.error;
-      field.error = '중복 확인에 실패했습니다. 다시 시도해 주세요.';
+      field.error = ApiFailure.from(
+        error,
+        '중복 확인에 실패했습니다. 다시 시도해 주세요.',
+      ).message;
     } catch (_) {
       if (_disposed || version != field.version) return;
       field.status = CheckStatus.error;
       field.error = '응답 형식을 확인하지 못했습니다. 다시 시도해 주세요.';
     }
     if (!_disposed && version == field.version) notifyListeners();
+  }
+
+  void _clearSubmitError() {
+    passwordErrorText = null;
+    snackbarMessage = null;
+    if (!isSubmitting) submitStatus = SubmitStatus.idle;
+  }
+
+  void onPasswordChanged() {
+    _clearSubmitError();
+    notifyListeners();
+  }
+
+  Future<int?> submit(String password) async {
+    if (_disposed || isSubmitting || !bothAvailable) return null;
+    _clearSubmitError();
+    submitStatus = SubmitStatus.submitting;
+    notifyListeners();
+    try {
+      final response = await _service.signUp(
+        CreateMemberRequest(_email.current, _nickname.current, password),
+      );
+      final id = response.result?.memberId;
+      if (id == null || id <= 0) {
+        throw const ApiFailure('가입 응답에 회원 번호가 없습니다.');
+      }
+      submitStatus = SubmitStatus.success;
+      return id;
+    } catch (error) {
+      final failure = ApiFailure.from(error, '회원가입 요청에 실패했습니다. 다시 시도해 주세요.');
+      final message = failure.message;
+      if (failure.matches(400) &&
+          RegExp('비밀번호|password', caseSensitive: false).hasMatch(message)) {
+        passwordErrorText = message;
+      } else {
+        snackbarMessage = message;
+      }
+      submitStatus = SubmitStatus.error;
+      return null;
+    } finally {
+      if (!_disposed) notifyListeners();
+    }
   }
 
   @override

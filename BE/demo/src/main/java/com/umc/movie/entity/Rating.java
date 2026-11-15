@@ -34,14 +34,13 @@ public class Rating extends BaseTimeEntity {
         this.member = member; this.movieId = movieId; this.score = score; this.comment = comment;
     }
     /**
-     * 검증된 별점을 갱신하고 요청에 후기 문자열이 있는 경우에만 후기를 변경합니다.
+     * v7 요청의 별점과 후기로 평점 내용을 교체합니다.
      *
      * @param score 요청 DTO에서 1~5 범위로 검증된 별점
-     * @param comment null이면 기존 후기 유지, 빈 문자열이면 비우기, 그 외에는 새 후기
+     * @param comment 새 후기. null이면 기존 후기를 지웁니다.
      */
     public void update(Integer score, String comment) {
         this.score = score;
-        // PATCH에서 생략 또는 null은 유지, 빈 문자열은 후기 비우기입니다.
-        if (comment != null) this.comment = comment;
+        this.comment = comment;
     }
 }

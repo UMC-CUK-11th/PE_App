@@ -1,3 +1,7 @@
+import 'package:movielog/view_models/learning_member_session.dart';
+import 'package:movielog/models/common_response.dart';
+import 'package:movielog/models/member_models.dart';
+
 // 수동 검증 전용 진입점. main.dart 앱에는 이 코드를 등록하지 않습니다.
 import 'dart:async';
 
@@ -28,7 +32,7 @@ class _PreviewAppState extends State<PreviewApp> {
     routes: [
       GoRoute(path: '/', builder: (_, _) => const Preview()),
       GoRoute(
-        path: '/home',
+        path: '/movies',
         builder: (context, _) => Scaffold(
           appBar: AppBar(title: const Text('프리뷰 · 폼 검증 완료')),
           body: Center(
@@ -48,12 +52,19 @@ class _PreviewAppState extends State<PreviewApp> {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      MaterialApp.router(theme: AppTheme.light, routerConfig: _router);
+  Widget build(BuildContext context) => ChangeNotifierProvider(
+    create: (_) => LearningMemberSession(),
+    child: MaterialApp.router(theme: AppTheme.light, routerConfig: _router),
+  );
 }
 
 class _Checks extends MemberCheckService {
   _Checks() : super(Dio());
+  @override
+  Future<CommonResponse<SignUpResult>> signUp(
+    CreateMemberRequest request,
+  ) async => const CommonResponse('COMMON201', '가입 완료', SignUpResult(42));
+
   bool fail = false;
   @override
   Future<bool> checkNickname(String value) async {
@@ -100,7 +111,7 @@ class _PreviewState extends State<Preview> {
       mode = value;
       ratings = value == '회원가입' || value == '버튼 너비'
           ? null
-          : (MyRatingsViewModel(_Ratings(value), movies)..load());
+          : (MyRatingsViewModel(_Ratings(value), movies, memberId: 1)..load());
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => old?.dispose());
   }

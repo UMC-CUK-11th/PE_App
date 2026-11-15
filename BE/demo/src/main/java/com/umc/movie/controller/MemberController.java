@@ -1,4 +1,5 @@
 package com.umc.movie.controller;
+import com.umc.movie.auth.LoginMember;
 import com.umc.movie.dto.*;
 import com.umc.movie.service.MemberService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,6 +12,18 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/members")
 public class MemberController {
     private final MemberService memberService;
+    @GetMapping("/me")
+    public ApiResponse<MemberInfoResponse> me(@LoginMember Long memberId) {
+        return ApiResponse.ok("회원 정보를 조회했습니다.", memberService.getMe(memberId));
+    }
+
+    @PatchMapping("/me")
+    public ApiResponse<MemberInfoResponse> updateMe(@LoginMember Long memberId,
+        @Valid @RequestBody UpdateNicknameRequest request, HttpServletRequest http) {
+        http.setAttribute("profile.nickname", request.nickname());
+        return ApiResponse.ok("회원 정보를 수정했습니다.",
+            memberService.updateNickname(memberId, request.nickname()));
+    }
     @GetMapping("/nickname")
     public NicknameCheckResponse checkNickname(@RequestParam("nickname") String nickname) {
         return memberService.checkNickname(nickname);

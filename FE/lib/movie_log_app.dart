@@ -10,10 +10,12 @@ import 'services/tmdb_movie_service.dart';
 import 'services/movie_log_client.dart';
 import 'services/member_check_service.dart';
 import 'services/rating_api_service.dart';
+import 'view_models/learning_member_session.dart';
 
 class MovieLogApp extends StatelessWidget {
   const MovieLogApp({
     this.router,
+    this.learningSession,
     this.memberCheckService,
     this.ratingApiService,
     super.key,
@@ -22,11 +24,16 @@ class MovieLogApp extends StatelessWidget {
   final RatingApiService? ratingApiService;
 
   final GoRouter? router;
+  final LearningMemberSession? learningSession;
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        if (learningSession case final session?)
+          ChangeNotifierProvider.value(value: session)
+        else
+          ChangeNotifierProvider(create: (_) => LearningMemberSession()),
         Provider<_WorkbookClient>(
           create: (_) => _WorkbookClient(),
           dispose: (_, client) => client.dio.close(force: true),
