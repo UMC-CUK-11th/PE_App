@@ -43,17 +43,29 @@ class MovieLogButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
           ),
         ),
-        // 통신 중에는 label과 인디케이터 중 하나만 그립니다.
-        child: isLoading
-            ? const SizedBox(
+        // 통신 중에는 label 대신 인디케이터만 그립니다.
+        // label은 보이지 않게 자리만 남겨 width가 null일 때도 버튼 폭이 흔들리지 않습니다.
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Visibility(
+              visible: !isLoading,
+              maintainSize: true,
+              maintainAnimation: true,
+              maintainState: true,
+              child: Text(label),
+            ),
+            if (isLoading)
+              const SizedBox(
                 width: 18,
                 height: 18,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
                   color: AppColors.white,
                 ),
-              )
-            : Text(label),
+              ),
+          ],
+        ),
       ),
     );
   }
