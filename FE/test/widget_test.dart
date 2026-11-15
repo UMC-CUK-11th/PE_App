@@ -6,15 +6,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:movielog/data/genre_preference.dart';
+import 'package:movielog/data/models/rating_dto.dart';
 import 'package:movielog/data/models/tmdb_genre_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_page.dart';
+import 'package:movielog/data/services/movielog_member_service.dart';
 import 'package:movielog/data/services/tmdb_movie_service.dart';
 import 'package:movielog/router/app_router.dart';
 import 'package:movielog/screens/movies/genre_filter_sheet.dart';
 import 'package:movielog/screens/sign_up/sign_up_validators.dart';
 import 'package:movielog/theme/app_theme.dart';
 import 'package:movielog/view_models/movie_list_view_model.dart';
+import 'package:movielog/view_models/sign_up_view_model.dart';
 import 'package:movielog/widgets/tmdb_poster_image.dart';
 
 const _homeHeadline = '오늘은 어떤\n영화를 볼까요?';
@@ -113,6 +116,36 @@ class FakeTmdbMovieService extends TmdbMovieService {
   }
 }
 
+/// MovieLog 백엔드 응답을 흉내 냅니다. 시드 데이터와 같은 값을 씁니다.
+class FakeMovieLogMemberService extends MovieLogMemberService {
+  FakeMovieLogMemberService({this.ratings = const []}) : super(Dio());
+
+  final takenNicknames = {'수현', '민서'};
+  final takenEmails = {'noco@umc.com', 'minseo@umc.com'};
+  List<RatingDto> ratings;
+  bool fail = false;
+  Completer<void>? gate;
+
+  @override
+  Future<bool> isNicknameAvailable(String nickname) async {
+    await gate?.future;
+    if (fail) throw _networkError();
+    return !takenNicknames.contains(nickname);
+  }
+
+  @override
+  Future<bool> isEmailAvailable(String email) async {
+    if (fail) throw _networkError();
+    return !takenEmails.contains(email);
+  }
+
+  @override
+  Future<List<RatingDto>> fetchRatings(int memberId) async {
+    if (fail) throw _networkError();
+    return ratings;
+  }
+}
+
 FakeTmdbMovieService _defaultService() => FakeTmdbMovieService(
   popular: [for (var id = 1; id <= 8; id++) _movie(id)],
   pages: {
@@ -136,6 +169,7 @@ Future<FakeTmdbMovieService> _pumpApp(
   String location = '/start',
   Size size = const Size(390, 844),
   FakeTmdbMovieService? service,
+  FakeMovieLogMemberService? memberService,
   GenrePreference? preference,
   bool settle = true,
 }) async {
@@ -145,8 +179,13 @@ Future<FakeTmdbMovieService> _pumpApp(
 
   final fake = service ?? _defaultService();
   await tester.pumpWidget(
-    Provider<TmdbMovieService>.value(
-      value: fake,
+    MultiProvider(
+      providers: [
+        Provider<TmdbMovieService>.value(value: fake),
+        Provider<MovieLogMemberService>.value(
+          value: memberService ?? FakeMovieLogMemberService(),
+        ),
+      ],
       child: MaterialApp.router(
         theme: AppTheme.light,
         routerConfig: AppRouter.createRouter(
@@ -215,10 +254,16 @@ void main() {
       await _pumpApp(tester, location: '/register');
 
       await _fillValidSignUp(tester);
-      expect(_isEnabled(tester, _submitButton), isFalse);
-
       await tester.tap(find.byType(Checkbox));
       await tester.pump();
+      // 중복 확인 전에는 형식이 맞아도 가입할 수 없습니다.
+      expect(_isEnabled(tester, _submitButton), isFalse);
+
+      await tester.tap(find.text('중복 확인').at(0));
+      await tester.tap(find.text('중복 확인').at(1));
+      await tester.pumpAndSettle();
+      expect(find.text('사용 가능한 닉네임이에요'), findsOneWidget);
+      expect(find.text('사용 가능한 이메일이에요'), findsOneWidget);
       expect(_isEnabled(tester, _submitButton), isTrue);
 
       await tester.tap(_submitButton);
@@ -656,6 +701,85 @@ void main() {
       await _pumpApp(tester, location: '/movies/999');
 
       expect(find.text('영화를 찾을 수 없어요.'), findsOneWidget);
+    });
+  });
+
+  group('MovieLog 자체 API 연동', () {
+    test('사용 중인 닉네임은 taken, 새 닉네임은 available', () async {
+      final viewModel = SignUpViewModel(FakeMovieLogMemberService());
+
+      await viewModel.checkNickname('수현');
+      expect(viewModel.nickname, DuplicateCheck.taken);
+
+      await viewModel.checkNickname('새닉네임');
+      expect(viewModel.nickname, DuplicateCheck.available);
+    });
+
+    test('확인 중에 입력이 바뀌면 늦게 온 응답을 버린다', () async {
+      final service = FakeMovieLogMemberService()..gate = Completer<void>();
+      final viewModel = SignUpViewModel(service);
+
+      final pending = viewModel.checkNickname('새닉네임');
+      viewModel.nicknameChanged();
+      service.gate!.complete();
+      await pending;
+
+      expect(viewModel.nickname, DuplicateCheck.unchecked);
+    });
+
+    test('서버 요청이 실패하면 failed로 표시한다', () async {
+      final viewModel = SignUpViewModel(
+        FakeMovieLogMemberService()..fail = true,
+      );
+
+      await viewModel.checkEmail('new@umc.com');
+
+      expect(viewModel.email, DuplicateCheck.failed);
+      expect(viewModel.bothAvailable, isFalse);
+    });
+
+    testWidgets('사용 중인 이메일이면 화면에 안내하고 가입을 막는다', (tester) async {
+      await _pumpApp(tester, location: '/register');
+
+      await tester.enterText(_field(1), 'noco@umc.com');
+      await tester.pump();
+      await tester.tap(find.text('중복 확인').at(1));
+      await tester.pumpAndSettle();
+
+      expect(find.text('이미 사용 중인 이메일이에요'), findsOneWidget);
+      expect(_isEnabled(tester, _submitButton), isFalse);
+    });
+
+    testWidgets('마이 화면은 내 평점을 TMDB 영화 정보와 함께 보여준다', (tester) async {
+      await _pumpApp(
+        tester,
+        location: '/my',
+        size: const Size(390, 1600),
+        memberService: FakeMovieLogMemberService(
+          ratings: [
+            RatingDto(
+              ratingId: 2,
+              movieId: 1,
+              score: 4,
+              comment: '다시 봐도 명작',
+              createdAt: DateTime(2026, 11, 15),
+            ),
+            RatingDto(
+              ratingId: 1,
+              movieId: 999,
+              score: 5,
+              comment: null,
+              createdAt: DateTime(2026, 11, 15),
+            ),
+          ],
+        ),
+      );
+
+      expect(find.text('내 평점'), findsOneWidget);
+      expect(find.text('영화 1'), findsOneWidget);
+      expect(find.text('다시 봐도 명작'), findsOneWidget);
+      // TMDB에서 못 찾은 영화는 movieId로 대신 표시합니다.
+      expect(find.text('영화 #999'), findsOneWidget);
     });
   });
 }
