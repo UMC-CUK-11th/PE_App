@@ -95,13 +95,20 @@ class MovieListViewModel extends ChangeNotifier {
   /// 확인 버튼·Chip으로 바뀐 장르를 받아 목록을 비우고 page 1부터 다시 조회합니다.
   Future<void> selectGenres(List<int>? genreIds) async {
     if (!canChangeGenre) return;
+    // 장르 목록을 못 받은 상태라면 장르 필터가 동작하지 않으므로 처음부터 다시 불러옵니다.
+    if (genres.isEmpty) return loadInitial();
 
     selectedGenreIds = (genreIds == null || genreIds.isEmpty)
         ? null
         : genres.map((genre) => genre.id).where(genreIds.contains).toList();
     movies = const [];
     final version = _startLoading();
-    await _genrePreference.save(selectedGenreIds ?? const []);
+    try {
+      await _genrePreference.save(selectedGenreIds ?? const []);
+    } catch (error) {
+      // 장르 저장은 편의 기능이라 실패해도 목록 조회는 계속합니다.
+      debugPrint('장르 설정 저장 실패: $error');
+    }
     await _loadMovies(version);
   }
 
@@ -130,6 +137,10 @@ class MovieListViewModel extends ChangeNotifier {
       return true;
     } on DioException {
       message = '영화를 새로 불러오지 못했어요.';
+      // 보여 줄 이전 목록이 없으면 Empty가 아니라 Error 화면으로 바꿉니다.
+      if (movies.isEmpty && _isCurrent(version)) {
+        status = MovieListLoadStatus.error;
+      }
       return false;
     } finally {
       if (!_disposed) {

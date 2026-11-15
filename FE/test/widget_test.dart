@@ -146,6 +146,14 @@ class FakeMovieLogMemberService extends MovieLogMemberService {
   }
 }
 
+class _ThrowingGenrePreference implements GenrePreference {
+  @override
+  Future<List<int>> read() async => const [];
+
+  @override
+  Future<void> save(List<int> genreIds) async => throw StateError('저장 실패');
+}
+
 FakeTmdbMovieService _defaultService() => FakeTmdbMovieService(
   popular: [for (var id = 1; id <= 8; id++) _movie(id)],
   pages: {
@@ -481,6 +489,46 @@ void main() {
       expect(viewModel.movies, hasLength(2));
       expect(viewModel.status, MovieListLoadStatus.success);
       expect(viewModel.isRefreshing, isFalse);
+    });
+  });
+
+  group('MovieListViewModel 오류 경로', () {
+    test('장르 저장이 실패해도 Loading에 멈추지 않는다', () async {
+      final viewModel = MovieListViewModel(
+        _defaultService(),
+        _ThrowingGenrePreference(),
+      );
+      await viewModel.loadInitial();
+
+      await viewModel.selectGenres([878]);
+
+      expect(viewModel.status, MovieListLoadStatus.success);
+      expect(viewModel.movies.single.title, '우주 영화');
+    });
+
+    test('장르 로드 실패 후 "전체"를 눌러도 장르부터 다시 불러온다', () async {
+      final service = _defaultService()..genres = const [];
+      final viewModel = MovieListViewModel(service, InMemoryGenrePreference());
+      await viewModel.loadInitial();
+      expect(viewModel.genres, isEmpty);
+
+      service.genres = const [TmdbGenreDto(id: 28, name: '액션')];
+      await viewModel.selectGenres(const []);
+
+      expect(viewModel.genres, hasLength(1));
+      expect(viewModel.status, MovieListLoadStatus.success);
+    });
+
+    test('빈 목록에서 새로고침이 실패하면 Empty 대신 Error가 된다', () async {
+      final service = FakeTmdbMovieService(pages: {1: const []});
+      final viewModel = MovieListViewModel(service, InMemoryGenrePreference());
+      await viewModel.loadInitial();
+      expect(viewModel.status, MovieListLoadStatus.empty);
+
+      service.failDiscover = true;
+      expect(await viewModel.refresh(), isFalse);
+
+      expect(viewModel.status, MovieListLoadStatus.error);
     });
   });
 
