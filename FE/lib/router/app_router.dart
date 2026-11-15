@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../data/genre_preference.dart';
 import '../data/models/tmdb_movie_dto.dart';
+import '../data/services/movielog_member_service.dart';
 import '../data/services/tmdb_movie_service.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/main/main_screen.dart';
@@ -14,6 +15,8 @@ import '../screens/sign_up/sign_up_screen.dart';
 import '../screens/start/start_screen.dart';
 import '../view_models/movie_home_view_model.dart';
 import '../view_models/movie_list_view_model.dart';
+import '../view_models/my_ratings_view_model.dart';
+import '../view_models/sign_up_view_model.dart';
 
 class AppRouter {
   AppRouter._();
@@ -37,7 +40,11 @@ class AppRouter {
         ),
         GoRoute(
           path: '/register',
-          builder: (context, state) => const SignUpScreen(),
+          builder: (context, state) => ChangeNotifierProvider<SignUpViewModel>(
+            create: (context) =>
+                SignUpViewModel(context.read<MovieLogMemberService>()),
+            child: const SignUpScreen(),
+          ),
         ),
         StatefulShellRoute.indexedStack(
           builder: (context, state, navigationShell) {
@@ -88,7 +95,14 @@ class AppRouter {
               routes: [
                 GoRoute(
                   path: '/my',
-                  builder: (context, state) => const ProfileScreen(),
+                  builder: (context, state) =>
+                      ChangeNotifierProvider<MyRatingsViewModel>(
+                        create: (context) => MyRatingsViewModel(
+                          context.read<MovieLogMemberService>(),
+                          context.read<TmdbMovieService>(),
+                        )..load(),
+                        child: const ProfileScreen(),
+                      ),
                 ),
               ],
             ),
