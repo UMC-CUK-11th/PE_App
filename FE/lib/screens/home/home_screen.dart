@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
-import '../../data/movie.dart';
+import '../../data/models/tmdb_movie_dto.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
+import '../../view_models/movie_home_view_model.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../widgets/movie_cards.dart';
+import '../../widgets/tmdb_poster_image.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
+  void _openDetail(BuildContext context, TmdbMovieDto movie) {
+    // TMDB id를 경로로 넘깁니다. 이후 평점 저장의 movieId가 됩니다.
+    context.push('/movies/${movie.id}', extra: movie);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final featured = movies.first;
-    final popular = movies.skip(1).toList();
-
     return PopScope(
       canPop: false,
       child: Scaffold(
@@ -28,39 +33,88 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
-        body: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          children: [
-            const Text('오늘은 어떤\n영화를 볼까요?', style: AppTextStyles.headline),
-            const SizedBox(height: 16),
-            FeaturedMovieCard(
-              movie: featured,
-              onDetail: () => context.push('/movies/${featured.id}'),
-            ),
-            const SizedBox(height: 24),
-            SectionHeader(
-              title: '인기 영화',
-              actionLabel: '전체보기',
-              onAction: () => context.go('/movies'),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 250,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: popular.length,
-                separatorBuilder: (context, index) => const SizedBox(width: 12),
-                itemBuilder: (context, index) {
-                  final movie = popular[index];
-                  return MovieCard(
-                    movie: movie,
-                    onTap: () => context.push('/movies/${movie.id}'),
-                  );
-                },
+        body: Consumer<MovieHomeViewModel>(
+          builder: (context, viewModel, child) {
+            return switch (viewModel.status) {
+              MovieHomeLoadStatus.idle ||
+              MovieHomeLoadStatus.loading => const Center(
+                child: CircularProgressIndicator(color: AppColors.violet),
               ),
-            ),
-          ],
+              MovieHomeLoadStatus.error => _HomeMessage(
+                message: viewModel.message ?? '인기 영화를 불러오지 못했어요.',
+                onRetry: () => context.read<MovieHomeViewModel>().loadPopular(),
+              ),
+              MovieHomeLoadStatus.empty => const _HomeMessage(
+                message: '인기 영화가 아직 없어요.',
+              ),
+              MovieHomeLoadStatus.success => _buildContent(
+                context,
+                viewModel.popularMovies,
+              ),
+            };
+          },
         ),
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, List<TmdbMovieDto> popular) {
+    final featured = popular.first;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      children: [
+        const Text('오늘은 어떤\n영화를 볼까요?', style: AppTextStyles.headline),
+        const SizedBox(height: 16),
+        FeaturedMovieCard(
+          movie: featured,
+          onDetail: () => _openDetail(context, featured),
+        ),
+        const SizedBox(height: 24),
+        SectionHeader(
+          title: '인기 영화',
+          actionLabel: '전체보기',
+          onAction: () => context.go('/movies'),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 250,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: popular.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final movie = popular[index];
+              return MovieCard(
+                movie: movie,
+                onTap: () => _openDetail(context, movie),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HomeMessage extends StatelessWidget {
+  const _HomeMessage({required this.message, this.onRetry});
+
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(message, style: AppTextStyles.bodyMedium),
+          if (onRetry != null) ...[
+            const SizedBox(height: 12),
+            FilledButton(onPressed: onRetry, child: const Text('다시 시도')),
+          ],
+        ],
       ),
     );
   }
@@ -73,7 +127,7 @@ class FeaturedMovieCard extends StatelessWidget {
     required this.onDetail,
   });
 
-  final Movie movie;
+  final TmdbMovieDto movie;
   final VoidCallback onDetail;
 
   @override
@@ -86,7 +140,11 @@ class FeaturedMovieCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            MoviePoster(movie: movie, borderRadius: 20),
+            TmdbPosterImage(
+              posterPath: movie.posterPath,
+              borderRadius: 20,
+              semanticLabel: '${movie.title} 포스터',
+            ),
             ClipRRect(
               borderRadius: BorderRadius.circular(20),
               child: const DecoratedBox(
@@ -133,7 +191,10 @@ class FeaturedMovieCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    '${movie.tags.take(2).join(' · ')} · ${movie.runtimeMinutes}분',
+                    [
+                      ?movie.year,
+                      '★ ${movie.voteAverage.toStringAsFixed(1)}',
+                    ].join(' · '),
                     style: AppTextStyles.bodySmall.copyWith(
                       color: AppColors.white,
                     ),

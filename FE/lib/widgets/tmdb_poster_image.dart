@@ -55,7 +55,10 @@ class TmdbPosterImage extends StatelessWidget {
       height: height,
       color: AppColors.surfaceLow,
       alignment: Alignment.center,
-      child: const Icon(Icons.image_not_supported_outlined, color: AppColors.gray),
+      child: const Icon(
+        Icons.image_not_supported_outlined,
+        color: AppColors.gray,
+      ),
     );
   }
 }

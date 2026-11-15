@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../data/genre_filter.dart';
 import '../data/genre_preference.dart';
+import '../data/models/tmdb_movie_dto.dart';
 import '../data/movie_service.dart';
+import '../data/services/tmdb_movie_service.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/main/main_screen.dart';
 import '../screens/movies/movie_detail_screen.dart';
@@ -11,6 +14,7 @@ import '../screens/movies/movie_list_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/sign_up/sign_up_screen.dart';
 import '../screens/start/start_screen.dart';
+import '../view_models/movie_home_view_model.dart';
 
 class AppRouter {
   AppRouter._();
@@ -46,7 +50,14 @@ class AppRouter {
               routes: [
                 GoRoute(
                   path: '/home',
-                  builder: (context, state) => const HomeScreen(),
+                  // Branch는 한 번만 만들어지므로 Popular 요청도 한 번만 실행됩니다.
+                  builder: (context, state) =>
+                      ChangeNotifierProvider<MovieHomeViewModel>(
+                        create: (context) =>
+                            MovieHomeViewModel(context.read<TmdbMovieService>())
+                              ..loadPopular(),
+                        child: const HomeScreen(),
+                      ),
                 ),
               ],
             ),
@@ -66,7 +77,8 @@ class AppRouter {
                       path: ':movieId',
                       parentNavigatorKey: rootNavigatorKey,
                       builder: (context, state) => MovieDetailScreen(
-                        movieId: state.pathParameters['movieId']!,
+                        movieId: int.tryParse(state.pathParameters['movieId']!),
+                        movie: state.extra as TmdbMovieDto?,
                       ),
                     ),
                   ],

@@ -30,7 +30,8 @@ class TmdbMovieDto {
 
   factory TmdbMovieDto.fromJson(Map<String, dynamic> json) {
     // 목록 응답은 genre_ids, 상세 응답은 genres[{id, name}]으로 내려옵니다.
-    final rawGenreIds = json['genre_ids'] as List<dynamic>? ??
+    final rawGenreIds =
+        json['genre_ids'] as List<dynamic>? ??
         (json['genres'] as List<dynamic>? ?? const [])
             .map((genre) => (genre as Map<String, dynamic>)['id'])
             .toList();

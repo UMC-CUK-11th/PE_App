@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../data/models/tmdb_movie_dto.dart';
 import '../data/movie.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
+import 'tmdb_poster_image.dart';
 
 class MoviePoster extends StatelessWidget {
-  const MoviePoster({
-    super.key,
-    required this.movie,
-    this.borderRadius = 12,
-  });
+  const MoviePoster({super.key, required this.movie, this.borderRadius = 12});
 
   final Movie movie;
   final double borderRadius;
@@ -58,7 +56,7 @@ class MovieCard extends StatelessWidget {
     this.width = 120,
   });
 
-  final Movie movie;
+  final TmdbMovieDto movie;
   final VoidCallback onTap;
   final double width;
 
@@ -73,7 +71,13 @@ class MovieCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            AspectRatio(aspectRatio: 2 / 3, child: MoviePoster(movie: movie)),
+            AspectRatio(
+              aspectRatio: 2 / 3,
+              child: TmdbPosterImage(
+                posterPath: movie.posterPath,
+                semanticLabel: '${movie.title} 포스터',
+              ),
+            ),
             const SizedBox(height: 8),
             Text(
               movie.title,
@@ -81,7 +85,7 @@ class MovieCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: AppTextStyles.labelLarge.copyWith(fontSize: 14),
             ),
-            RatingLabel(rating: movie.rating),
+            RatingLabel(rating: movie.voteAverage),
           ],
         ),
       ),
@@ -90,11 +94,7 @@ class MovieCard extends StatelessWidget {
 }
 
 class MovieGridCard extends StatelessWidget {
-  const MovieGridCard({
-    super.key,
-    required this.movie,
-    required this.onTap,
-  });
+  const MovieGridCard({super.key, required this.movie, required this.onTap});
 
   final Movie movie;
   final VoidCallback onTap;

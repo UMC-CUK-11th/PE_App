@@ -19,7 +19,9 @@ class TmdbLoggingInterceptor extends Interceptor {
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
-    debugPrint('[TMDB 응답] ${response.statusCode} ${response.requestOptions.uri}');
+    debugPrint(
+      '[TMDB 응답] ${response.statusCode} ${response.requestOptions.uri}',
+    );
     debugPrint('[TMDB 응답 Body] ${response.data}');
     handler.next(response);
   }
