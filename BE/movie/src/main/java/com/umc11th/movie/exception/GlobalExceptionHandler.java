@@ -17,6 +17,13 @@ public class GlobalExceptionHandler {
     private static final String EMAIL_CONSTRAINT = "uk_member_email";
     private static final String NICKNAME_CONSTRAINT = "uk_member_nickname";
     private static final String RATING_CONSTRAINT = "uk_rating_member_movie";
+    private static final String FAVORITE_CONSTRAINT = "uk_favorite_member_movie";
+
+    @ExceptionHandler(ApiException.class)
+    public ResponseEntity<ApiResponse<Void>> handleApi(ApiException exception) {
+        return ResponseEntity.status(exception.getStatus())
+                .body(ApiResponse.failure(exception.getCode(), exception.getMessage()));
+    }
 
     @ExceptionHandler(AuthException.class)
     public ResponseEntity<ApiResponse<Void>> handleAuth(AuthException exception) {
@@ -72,6 +79,13 @@ public class GlobalExceptionHandler {
                     .body(ApiResponse.failure(
                             "COMMON4092",
                             "이미 이 영화에 평점을 남기셨습니다."
+                    ));
+        }
+        if (causeMessage.contains(FAVORITE_CONSTRAINT)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.failure(
+                            "FAVORITE409_1",
+                            "이미 이 영화를 즐겨찾기하셨습니다."
                     ));
         }
         if (isLegacyMemberUniqueViolation(causeMessage)) {
