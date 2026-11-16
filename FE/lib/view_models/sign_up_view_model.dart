@@ -15,6 +15,7 @@ class SignUpViewModel extends ChangeNotifier {
 
   SubmitStatus submitStatus = SubmitStatus.idle;
   int? createdMemberId;
+  String? createdAccessToken;
   String? passwordErrorText;
   String? snackbarMessage;
   bool _disposed = false;
@@ -53,6 +54,7 @@ class SignUpViewModel extends ChangeNotifier {
         throw const FormatException('로그인 응답에 access token이 없습니다.');
       }
       createdMemberId = result.memberId;
+      createdAccessToken = loginResult.accessToken;
       session.setAuthenticatedMember(
         memberId: result.memberId,
         accessToken: loginResult.accessToken,

@@ -9,11 +9,17 @@ class LearningMemberSession extends ChangeNotifier {
   String? _accessToken;
   int? get memberId => _memberId;
   String? get accessToken => _accessToken;
-  bool get isAuthenticated => _memberId != null && _accessToken != null;
+  bool get isAuthenticated => _accessToken != null;
 
-  void setMemberId(int memberId) {
+  void setMemberId(int? memberId) {
     if (_memberId == memberId) return;
     _memberId = memberId;
+    notifyListeners();
+  }
+
+  void setAccessToken(String accessToken) {
+    if (_accessToken == accessToken) return;
+    _accessToken = accessToken;
     notifyListeners();
   }
 
@@ -24,6 +30,13 @@ class LearningMemberSession extends ChangeNotifier {
     if (_memberId == memberId && _accessToken == accessToken) return;
     _memberId = memberId;
     _accessToken = accessToken;
+    notifyListeners();
+  }
+
+  void clear() {
+    if (_memberId == null && _accessToken == null) return;
+    _memberId = null;
+    _accessToken = null;
     notifyListeners();
   }
 }

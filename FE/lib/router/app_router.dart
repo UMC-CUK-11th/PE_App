@@ -10,15 +10,19 @@ import '../data/services/movie_list_preferences.dart';
 import '../data/services/tmdb_movie_service.dart';
 import '../models/movie.dart';
 import '../screens/home_screen.dart';
+import '../screens/login_screen.dart';
 import '../screens/main_screen.dart';
 import '../screens/member_ratings_screen.dart';
 import '../screens/movie_detail_screen.dart';
 import '../screens/movie_list_screen.dart';
 import '../screens/profile_screen.dart';
+import '../screens/edit_profile_screen.dart';
 import '../screens/register_screen.dart';
 import '../screens/start_screen.dart';
+import '../screens/splash_screen.dart';
 import '../screens/week05_api_screen.dart';
 import '../view_models/movie_detail_view_model.dart';
+import '../view_models/auth_view_model.dart';
 
 abstract final class AppRouter {
   static GoRouter createRouter({
@@ -28,6 +32,7 @@ abstract final class AppRouter {
     MemberApiService? memberApiService,
     TmdbMovieService? tmdbMovieService,
     LearningMemberSession? memberSession,
+    AuthViewModel? authViewModel,
     MovieListPreferences movieListPreferences =
         const SharedPreferencesMovieListPreferences(),
   }) {
@@ -48,7 +53,35 @@ abstract final class AppRouter {
             : TmdbMovieService.fromEnvironment());
     return GoRouter(
       initialLocation: initialLocation,
+      refreshListenable: authViewModel,
+      redirect: authViewModel == null
+          ? null
+          : (context, state) {
+              final location = state.matchedLocation;
+              final isAuthRoute =
+                  location == '/login' || location == '/register';
+              if (authViewModel.status == AuthStatus.initializing) {
+                return location == '/splash' ? null : '/splash';
+              }
+              if (!authViewModel.isSignedIn) {
+                return isAuthRoute ? null : '/login';
+              }
+              if (location == '/splash' ||
+                  isAuthRoute ||
+                  location == '/start') {
+                return '/home';
+              }
+              return null;
+            },
       routes: [
+        GoRoute(
+          path: '/splash',
+          builder: (context, state) => const SplashScreen(),
+        ),
+        GoRoute(
+          path: '/login',
+          builder: (context, state) => const LoginScreen(),
+        ),
         GoRoute(
           path: '/start',
           builder: (context, state) => const StartScreen(),
@@ -58,6 +91,7 @@ abstract final class AppRouter {
           builder: (context, state) => RegisterScreen(
             apiService: resolvedMemberApiService,
             session: resolvedMemberSession,
+            authViewModel: authViewModel,
           ),
         ),
         GoRoute(
@@ -71,6 +105,10 @@ abstract final class AppRouter {
               movieService: resolvedTmdbMovieService,
             );
           },
+        ),
+        GoRoute(
+          path: '/my/profile/edit',
+          builder: (context, state) => const EditProfileScreen(),
         ),
         StatefulShellRoute.indexedStack(
           builder: (context, state, navigationShell) {
