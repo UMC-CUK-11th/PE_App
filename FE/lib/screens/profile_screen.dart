@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
+import '../data/models/member_info.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/common_app_bar.dart';
 import '../widgets/stat_item.dart';
+import '../view_models/auth_view_model.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -13,68 +16,141 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    AuthViewModel? auth;
+    try {
+      auth = context.watch<AuthViewModel>();
+    } on ProviderNotFoundException {
+      auth = null;
+    }
+    if (auth == null) {
+      return Scaffold(
+        appBar: const CommonAppBar(
+          title: '내 프로필',
+          titleStyle: AppTextStyles.signUpAppBarTitle,
+        ),
+        body: _buildProfileContent(
+          context,
+          MemberInfo(
+            memberId: 1,
+            email: 'movie@example.com',
+            nickname: '무비러버',
+            createdAt: DateTime(2026, 10, 10),
+          ),
+        ),
+      );
+    }
+    final isMemberReady = auth.memberStatus == MemberLoadStatus.success;
+    final isAuthenticated = auth.status == AuthStatus.signedIn;
     return Scaffold(
-      appBar: const CommonAppBar(
+      appBar: CommonAppBar(
         title: '내 프로필',
-        titleStyle: AppTextStyles.signUpAppBarTitle,
+        centerTitle: !isMemberReady,
+        titleStyle: isMemberReady
+            ? AppTextStyles.profileTitle
+            : AppTextStyles.signUpAppBarTitle.copyWith(fontSize: 20),
+        actions: isAuthenticated
+            ? [TextButton(onPressed: auth.logout, child: const Text('로그아웃'))]
+            : null,
       ),
-      body: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const _ProfileHeader(),
-              const SizedBox(height: 32),
-              const _ProfileStats(),
-              const SizedBox(height: 26),
-              InkWell(
-                key: const ValueKey('my-ratings-entry'),
-                onTap: () => context.push('/my/ratings'),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  height: 64,
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.softViolet),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '내가 등록한 평점',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.black,
-                          ),
+      body: _buildBody(context, auth),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, AuthViewModel auth) {
+    if (auth.memberStatus == MemberLoadStatus.loading ||
+        (auth.member == null && auth.memberStatus == MemberLoadStatus.idle)) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.violet),
+      );
+    }
+    if (auth.memberStatus == MemberLoadStatus.error) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              '내 정보를 불러오지 못했어요.',
+              style: TextStyle(
+                color: Color(0xFF655F6C),
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 28),
+            SizedBox(
+              width: 218,
+              height: 44,
+              child: FilledButton(
+                onPressed: () => auth.loadMember(force: true),
+                child: const Text('다시 시도'),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final member = auth.member;
+    if (member == null) return const SizedBox.shrink();
+    return _buildProfileContent(context, member);
+  }
+
+  Widget _buildProfileContent(BuildContext context, MemberInfo member) {
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _ProfileHeader(member: member),
+            const SizedBox(height: 32),
+            const _ProfileStats(),
+            const SizedBox(height: 26),
+            InkWell(
+              key: const ValueKey('my-ratings-entry'),
+              onTap: () => context.push('/my/ratings'),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                height: 64,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.softViolet),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '내가 등록한 평점',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.black,
                         ),
                       ),
-                      Icon(
-                        Icons.chevron_right,
-                        color: AppColors.onSurfaceVariant,
-                      ),
-                    ],
-                  ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      color: AppColors.onSurfaceVariant,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 24),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('선호하는 장르', style: AppTextStyles.titleMedium),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _genres
-                    .map((genre) => _GenreChip(label: genre))
-                    .toList(),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 24),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('선호하는 장르', style: AppTextStyles.titleMedium),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _genres
+                  .map((genre) => _GenreChip(label: genre))
+                  .toList(),
+            ),
+          ],
         ),
       ),
     );
@@ -82,7 +158,9 @@ class ProfileScreen extends StatelessWidget {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader();
+  const _ProfileHeader({required this.member});
+
+  final MemberInfo member;
 
   @override
   Widget build(BuildContext context) {
@@ -107,8 +185,8 @@ class _ProfileHeader extends StatelessWidget {
         const SizedBox(height: 14),
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 358),
-          child: const Text(
-            '무비러버',
+          child: Text(
+            member.nickname,
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 20,
@@ -117,11 +195,11 @@ class _ProfileHeader extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 358),
-          child: const Text(
-            '매주 주말엔 영화관으로 출근하는 프로 관람객.\n좋은 영화를 보고 기록하는 것을 좋아합니다.',
+          child: Text(
+            member.email,
             textAlign: TextAlign.center,
             style: TextStyle(
               color: AppColors.onSurfaceVariant,
@@ -131,14 +209,20 @@ class _ProfileHeader extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 37),
+        const SizedBox(height: 4),
+        Text(
+          '${member.createdAt.year}.${member.createdAt.month.toString().padLeft(2, '0')}.${member.createdAt.day.toString().padLeft(2, '0')} 가입',
+          style: const TextStyle(
+            color: AppColors.onSurfaceVariant,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 28),
         SizedBox(
           width: 127,
           height: 40,
           child: TextButton(
-            onPressed: () {
-              debugPrint('프로필 수정 버튼을 눌렀습니다.');
-            },
+            onPressed: () => context.push('/my/profile/edit'),
             style: TextButton.styleFrom(
               foregroundColor: AppColors.violet,
               side: const BorderSide(color: AppColors.violet),

@@ -40,7 +40,7 @@ void main() {
     expect(ratings, hasLength(1));
     expect(ratings.single.movieId, 550);
     expect(ratings.single.score, 5);
-    expect(capturedRequest?.path, '/members/1/ratings');
+    expect(capturedRequest?.path, '/v7/members/1/ratings');
     expect(capturedRequest?.queryParameters, {'page': 0, 'size': 10});
   });
 
@@ -114,15 +114,55 @@ void main() {
     );
     await service.deleteRating(ratingId: 31);
 
-    expect(requests[0].path, '/ratings');
+    expect(requests[0].path, '/v7/ratings');
     expect(requests[0].data, containsPair('movieId', 550));
     expect(requests[0].headers['Authorization'], 'Bearer test-access-token');
-    expect(requests[1].path, '/ratings/31');
+    expect(requests[1].path, '/v7/ratings/31');
     expect(requests[1].data, containsPair('comment', null));
     expect(requests[1].headers['Authorization'], 'Bearer test-access-token');
-    expect(requests[2].path, '/ratings/31');
+    expect(requests[2].path, '/v7/ratings/31');
     expect(requests[2].method, 'DELETE');
     expect(requests[2].headers['Authorization'], 'Bearer test-access-token');
+  });
+
+  test('내 정보 조회·수정은 v7 보호 경로와 Bearer 토큰을 사용한다', () async {
+    final requests = <RequestOptions>[];
+    final session = LearningMemberSession(initialAccessToken: 'member-token');
+    final service = MemberApiService(
+      _fakeDio((options) {
+        requests.add(options);
+        return {
+          'isSuccess': true,
+          'code': 'COMMON200',
+          'message': '성공',
+          'result': {
+            'memberId': 7,
+            'email': 'movie@example.com',
+            'nickname': options.method == 'PATCH' ? '새닉네임' : '무비러버',
+            'createdAt': '2026-10-10T09:00:00',
+          },
+        };
+      }),
+      authSession: session,
+    );
+
+    final me = await service.fetchMe();
+    final updated = await service.updateNickname('새닉네임');
+
+    expect(me.memberId, 7);
+    expect(updated.nickname, '새닉네임');
+    expect(requests.map((request) => request.path), [
+      '/v7/members/me',
+      '/v7/members/me',
+    ]);
+    expect(requests[1].method, 'PATCH');
+    expect(requests[1].data, {'nickname': '새닉네임'});
+    expect(
+      requests.every(
+        (request) => request.headers['Authorization'] == 'Bearer member-token',
+      ),
+      isTrue,
+    );
   });
 }
 

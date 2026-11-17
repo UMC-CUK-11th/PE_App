@@ -13,8 +13,14 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDateTime;
+
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -60,8 +66,14 @@ class MemberControllerTest {
 
     @Test
     void signsUpMember() throws Exception {
+        LocalDateTime createdAt = LocalDateTime.of(2026, 11, 17, 10, 30);
         when(memberService.signUp(org.mockito.ArgumentMatchers.any()))
-                .thenReturn(new MemberResponse(1L, "umc@example.com", "moviefan"));
+                .thenReturn(new MemberResponse(
+                        1L,
+                        "umc@example.com",
+                        "moviefan",
+                        createdAt
+                ));
 
         mockMvc.perform(post("/members")
                         .contentType("application/json")
@@ -79,21 +91,59 @@ class MemberControllerTest {
                 .andExpect(jsonPath("$.result.memberId").value(1))
                 .andExpect(jsonPath("$.result.email").value("umc@example.com"))
                 .andExpect(jsonPath("$.result.nickname").value("moviefan"))
+                .andExpect(jsonPath("$.result.createdAt").value("2026-11-17T10:30:00"))
                 .andExpect(jsonPath("$.result.password").doesNotExist());
     }
 
     @Test
     void getsAuthenticatedMemberProfile() throws Exception {
+        LocalDateTime createdAt = LocalDateTime.of(2026, 11, 17, 10, 30);
         when(jwtTokenProvider.getMemberId("valid-token")).thenReturn(1L);
         when(memberService.getMe(1L))
-                .thenReturn(new MemberResponse(1L, "umc@example.com", "moviefan"));
+                .thenReturn(new MemberResponse(
+                        1L,
+                        "umc@example.com",
+                        "moviefan",
+                        createdAt
+                ));
 
         mockMvc.perform(get("/members/me")
                         .header("Authorization", "Bearer valid-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("COMMON200"))
                 .andExpect(jsonPath("$.result.memberId").value(1))
-                .andExpect(jsonPath("$.result.email").value("umc@example.com"));
+                .andExpect(jsonPath("$.result.email").value("umc@example.com"))
+                .andExpect(jsonPath("$.result.createdAt").value("2026-11-17T10:30:00"));
+    }
+
+    @Test
+    void updatesAuthenticatedMemberNicknameThroughV7Path() throws Exception {
+        LocalDateTime createdAt = LocalDateTime.of(2026, 11, 17, 10, 30);
+        when(jwtTokenProvider.getMemberId("valid-token")).thenReturn(1L);
+        when(memberService.updateNickname(
+                org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.any()
+        )).thenReturn(new MemberResponse(
+                1L,
+                "umc@example.com",
+                "newname",
+                createdAt
+        ));
+
+        mockMvc.perform(patch("/v7/members/me")
+                        .header("Authorization", "Bearer valid-token")
+                        .contentType("application/json")
+                        .content("""
+                                {"nickname":"newname"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("COMMON200"))
+                .andExpect(jsonPath("$.result.nickname").value("newname"));
+
+        verify(memberService).updateNickname(
+                eq(1L),
+                argThat(request -> "newname".equals(request.nickname()))
+        );
     }
 
     @Test

@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import '../../core/network/auth_interceptor.dart';
+import '../models/member_info.dart';
 import '../models/member_rating.dart';
 import '../models/common_response.dart';
 import '../models/rating_requests.dart';
@@ -18,19 +20,18 @@ class MemberApiService {
     } on Object {
       // Widget tests can build routes without loading an asset-backed .env.
     }
-    return MemberApiService(
-      Dio(
-        BaseOptions(
-          baseUrl: baseUrl == null || baseUrl.isEmpty
-              ? 'http://localhost:8080'
-              : baseUrl,
-          connectTimeout: const Duration(seconds: 5),
-          receiveTimeout: const Duration(seconds: 5),
-          headers: const {'accept': 'application/json'},
-        ),
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: baseUrl == null || baseUrl.isEmpty
+            ? 'http://localhost:8080'
+            : baseUrl,
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 5),
+        headers: const {'accept': 'application/json'},
       ),
-      authSession: session,
     );
+    if (session != null) dio.interceptors.add(AuthInterceptor(session));
+    return MemberApiService(dio, authSession: session);
   }
 
   final Dio _dio;
@@ -67,7 +68,7 @@ class MemberApiService {
     int size = 10,
   }) async {
     final response = await _dio.get<List<dynamic>>(
-      '/members/$memberId/ratings',
+      '/v7/members/$memberId/ratings',
       queryParameters: {'page': page, 'size': size},
     );
     return (response.data ?? const [])
@@ -94,7 +95,7 @@ class MemberApiService {
     required String password,
   }) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/auth/login',
+      '/v7/auth/login',
       data: {'email': email.trim(), 'password': password},
     );
     return CommonResponse<LoginResult>.fromJson(
@@ -107,7 +108,7 @@ class MemberApiService {
     required CreateRatingRequest request,
   }) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/ratings',
+      '/v7/ratings',
       data: request.toJson(),
       options: _authenticatedOptions(),
     );
@@ -122,7 +123,7 @@ class MemberApiService {
     required UpdateRatingRequest request,
   }) async {
     final response = await _dio.patch<Map<String, dynamic>>(
-      '/ratings/$ratingId',
+      '/v7/ratings/$ratingId',
       data: request.toJson(),
       options: _authenticatedOptions(),
     );
@@ -134,9 +135,26 @@ class MemberApiService {
 
   Future<void> deleteRating({required int ratingId}) async {
     await _dio.delete<void>(
-      '/ratings/$ratingId',
+      '/v7/ratings/$ratingId',
       options: _authenticatedOptions(),
     );
+  }
+
+  Future<MemberInfo> fetchMe() async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/v7/members/me',
+      options: _authenticatedOptions(),
+    );
+    return parseMemberInfo(response.data);
+  }
+
+  Future<MemberInfo> updateNickname(String nickname) async {
+    final response = await _dio.patch<Map<String, dynamic>>(
+      '/v7/members/me',
+      data: {'nickname': nickname.trim()},
+      options: _authenticatedOptions(),
+    );
+    return parseMemberInfo(response.data);
   }
 }
 

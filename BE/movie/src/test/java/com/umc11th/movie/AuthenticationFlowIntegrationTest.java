@@ -104,6 +104,46 @@ class AuthenticationFlowIntegrationTest {
                 .andExpect(content().string(""));
     }
 
+    @Test
+    void supportsV7LoginMemberAndRatingPaths() throws Exception {
+        signUp("v7@example.com", "v7member");
+
+        String response = mockMvc.perform(post("/v7/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "v7@example.com",
+                                  "password": "Umc!1234"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String token = objectMapper.readTree(response)
+                .path("result")
+                .path("accessToken")
+                .asText();
+
+        mockMvc.perform(get("/v7/members/me")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.email").value("v7@example.com"))
+                .andExpect(jsonPath("$.result.createdAt").isNotEmpty());
+
+        mockMvc.perform(post("/v7/ratings")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "movieId": 550,
+                                  "score": 5,
+                                  "comment": "v7 토큰 기반 평점"
+                                }
+                                """))
+                .andExpect(status().isCreated());
+    }
+
     private void signUp(String email, String nickname) throws Exception {
         mockMvc.perform(post("/members")
                         .contentType(MediaType.APPLICATION_JSON)

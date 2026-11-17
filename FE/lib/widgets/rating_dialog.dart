@@ -122,10 +122,23 @@ class _RatingDialogState extends State<RatingDialog> {
                 ),
               ],
               const SizedBox(height: 12),
-              AppButton(
-                label: '확인',
-                isLoading: _isSubmitting,
-                onPressed: _score == 0 || _isSubmitting ? null : _submit,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton(
+                    key: const ValueKey('rating-cancel-button'),
+                    onPressed: _isSubmitting
+                        ? null
+                        : () => Navigator.of(context).pop(false),
+                    child: const Text('취소'),
+                  ),
+                  const SizedBox(width: 8),
+                  AppButton(
+                    label: '확인',
+                    isLoading: _isSubmitting,
+                    onPressed: _score == 0 || _isSubmitting ? null : _submit,
+                  ),
+                ],
               ),
             ],
           ),

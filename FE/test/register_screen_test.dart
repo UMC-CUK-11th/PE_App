@@ -191,7 +191,7 @@ void main() {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          final Map<String, dynamic> data = options.path == '/auth/login'
+          final Map<String, dynamic> data = options.path == '/v7/auth/login'
               ? {
                   'isSuccess': true,
                   'code': 'COMMON200',

@@ -10,14 +10,21 @@ import '../widgets/app_button.dart';
 import '../widgets/common_app_bar.dart';
 import '../widgets/movie_log_text_form_field.dart';
 import '../view_models/sign_up_view_model.dart';
+import '../view_models/auth_view_model.dart';
 
 enum AvailabilityState { idle, loading, available, duplicate, networkError }
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({this.apiService, this.session, super.key});
+  const RegisterScreen({
+    this.apiService,
+    this.session,
+    this.authViewModel,
+    super.key,
+  });
 
   final MemberApiService? apiService;
   final LearningMemberSession? session;
+  final AuthViewModel? authViewModel;
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -245,6 +252,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _passwordFieldValidate();
     if (_viewModel.submitStatus == SubmitStatus.success &&
         _viewModel.createdMemberId != null) {
+      final token = _viewModel.createdAccessToken;
+      if (widget.authViewModel != null && token != null) {
+        await widget.authViewModel!.completeAuthentication(
+          accessToken: token,
+          memberId: _viewModel.createdMemberId,
+        );
+      }
+      if (!mounted) return;
       context.go('/movies');
       return;
     }
