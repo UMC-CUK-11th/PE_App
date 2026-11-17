@@ -128,13 +128,34 @@ void main() {
       password: 'Password1!',
     );
     await Future<void>.delayed(Duration.zero);
-    await viewModel.logout();
+    final logout = viewModel.logout();
     storage.allowWrite.complete();
+    await logout;
 
     expect(await login, isFalse);
     expect(viewModel.status, AuthStatus.signedOut);
     expect(await storage.read(), isNull);
     expect(session.accessToken, isNull);
+  });
+
+  test('이전 토큰 저장이 늦게 끝나도 최신 인증 토큰을 유지한다', () async {
+    final storage = _OrderedWriteTokenStorage();
+    final session = LearningMemberSession();
+    final viewModel = AuthViewModel(
+      MemberApiService(Dio(), authSession: session),
+      session,
+      storage,
+    );
+
+    final first = viewModel.completeAuthentication(accessToken: 'token-a');
+    await storage.firstWriteStarted.future;
+    final second = viewModel.completeAuthentication(accessToken: 'token-b');
+    storage.allowFirstWrite.complete();
+    await Future.wait([first, second]);
+
+    expect(await storage.read(), 'token-b');
+    expect(session.accessToken, 'token-b');
+    expect(viewModel.status, AuthStatus.signedIn);
   });
 
   test('토큰 삭제가 실패해도 메모리 세션과 로그아웃 상태는 정리한다', () async {
@@ -226,4 +247,27 @@ class _DeleteFailingTokenStorage implements TokenStorage {
 
   @override
   Future<void> delete() async => throw StateError('keychain unavailable');
+}
+
+class _OrderedWriteTokenStorage implements TokenStorage {
+  final firstWriteStarted = Completer<void>();
+  final allowFirstWrite = Completer<void>();
+  String? _token;
+  int _writeCount = 0;
+
+  @override
+  Future<void> write(String token) async {
+    _writeCount++;
+    if (_writeCount == 1) {
+      firstWriteStarted.complete();
+      await allowFirstWrite.future;
+    }
+    _token = token;
+  }
+
+  @override
+  Future<String?> read() async => _token;
+
+  @override
+  Future<void> delete() async => _token = null;
 }

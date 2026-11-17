@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
@@ -25,6 +27,7 @@ class AuthViewModel extends ChangeNotifier {
   int _sessionVersion = 0;
   bool _disposed = false;
   bool _tokenDeletionPending = false;
+  Future<void> _tokenOperations = Future<void>.value();
 
   bool get isSignedIn => status == AuthStatus.signedIn;
   bool get isSigningIn => status == AuthStatus.signingIn;
@@ -36,7 +39,7 @@ class AuthViewModel extends ChangeNotifier {
     message = null;
     _notify();
     try {
-      final token = await _tokenStorage.read();
+      final token = await _runTokenOperation(_tokenStorage.read);
       if (version != _sessionVersion) return;
       if (token == null || token.isEmpty) {
         status = AuthStatus.signedOut;
@@ -81,11 +84,7 @@ class AuthViewModel extends ChangeNotifier {
       if (token == null || token.isEmpty) {
         throw const FormatException('로그인 응답에 accessToken이 없습니다.');
       }
-      await _tokenStorage.write(token);
-      if (version != _sessionVersion) {
-        await _deleteStoredTokenIfMatches(token);
-        return false;
-      }
+      if (!await _storeTokenIfCurrent(token, version)) return false;
       _tokenDeletionPending = false;
       _session.setAccessToken(token);
       member = null;
@@ -113,11 +112,7 @@ class AuthViewModel extends ChangeNotifier {
     int? memberId,
   }) async {
     final version = ++_sessionVersion;
-    await _tokenStorage.write(accessToken);
-    if (version != _sessionVersion) {
-      await _deleteStoredTokenIfMatches(accessToken);
-      return;
-    }
+    if (!await _storeTokenIfCurrent(accessToken, version)) return;
     _tokenDeletionPending = false;
     _session
       ..setAccessToken(accessToken)
@@ -191,7 +186,7 @@ class AuthViewModel extends ChangeNotifier {
 
   Future<bool> retryTokenDeletion() async {
     try {
-      await _tokenStorage.delete();
+      await _runTokenOperation(_tokenStorage.delete);
       _tokenDeletionPending = false;
       return true;
     } on Object {
@@ -217,7 +212,7 @@ class AuthViewModel extends ChangeNotifier {
     sessionExpired = expired;
     message = null;
     try {
-      await _tokenStorage.delete();
+      await _runTokenOperation(_tokenStorage.delete);
       _tokenDeletionPending = false;
     } on Object {
       _tokenDeletionPending = true;
@@ -225,14 +220,34 @@ class AuthViewModel extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> _deleteStoredTokenIfMatches(String token) async {
-    try {
-      if (await _tokenStorage.read() == token) {
-        await _tokenStorage.delete();
+  Future<bool> _storeTokenIfCurrent(String token, int version) {
+    return _runTokenOperation(() async {
+      if (version != _sessionVersion) return false;
+      await _tokenStorage.write(token);
+      if (version == _sessionVersion) return true;
+      try {
+        if (await _tokenStorage.read() == token) {
+          await _tokenStorage.delete();
+        }
+      } on Object {
+        _tokenDeletionPending = true;
       }
-    } on Object {
-      _tokenDeletionPending = true;
-    }
+      return false;
+    });
+  }
+
+  Future<T> _runTokenOperation<T>(Future<T> Function() operation) {
+    final completer = Completer<T>();
+    final previous = _tokenOperations;
+    _tokenOperations = () async {
+      await previous;
+      try {
+        completer.complete(await operation());
+      } on Object catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    }();
+    return completer.future;
   }
 
   bool _isSessionError(String? code) {
