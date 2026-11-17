@@ -80,6 +80,12 @@ class _ProfileBody extends StatelessWidget {
             const FavoriteGenres(),
             const SizedBox(height: 32),
             const MyRatingsEntry(),
+            const SizedBox(height: 12),
+            const _MenuEntry(
+              icon: Icons.bookmark_outline,
+              title: '내 즐겨찾기',
+              location: '/my/favorites',
+            ),
             const SizedBox(height: 32),
           ],
         ),
@@ -235,6 +241,36 @@ class MyRatingsEntry extends StatelessWidget {
         title: Text('내가 등록한 평점', style: AppTextStyles.labelLarge),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => context.push('/my/ratings'),
+      ),
+    );
+  }
+}
+
+class _MenuEntry extends StatelessWidget {
+  const _MenuEntry({
+    required this.icon,
+    required this.title,
+    required this.location,
+  });
+
+  final IconData icon;
+  final String title;
+  final String location;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppColors.outline),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        leading: Icon(icon, color: AppColors.violet),
+        title: Text(title, style: AppTextStyles.labelLarge),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => context.push(location),
       ),
     );
   }

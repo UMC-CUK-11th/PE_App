@@ -26,11 +26,19 @@ import 'package:movielog/core/network/auth_interceptor.dart';
 import 'package:movielog/core/storage/token_storage.dart';
 import 'package:movielog/data/models/login_models.dart';
 import 'package:movielog/data/models/member_info.dart';
+import 'package:movielog/core/utils/map_bounded.dart';
+import 'package:movielog/data/models/favorite_models.dart';
 import 'package:movielog/data/services/auth_api_service.dart';
+import 'package:movielog/data/services/favorite_api_service.dart';
+import 'package:movielog/view_models/load_phase.dart';
+import 'package:movielog/view_models/paged_movies_view_model.dart';
 import 'package:movielog/data/services/member_api_service.dart';
 import 'package:movielog/screens/login/login_screen.dart';
 import 'package:movielog/view_models/auth_view_model.dart';
 import 'package:movielog/view_models/edit_profile_view_model.dart';
+import 'package:movielog/view_models/favorite_detail_view_model.dart';
+import 'package:movielog/view_models/favorites_view_model.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:shared_preferences_platform_interface/types.dart';
@@ -79,6 +87,16 @@ class FakeTmdbMovieService extends TmdbMovieService {
   /// true면 discoverMovies가 DioException으로 실패합니다.
   bool failDiscover = false;
 
+  /// 이 page 번호의 discover만 실패시킵니다.
+  final failDiscoverPages = <int>{};
+  int? totalPagesOverride;
+
+  /// 검색어별 page 결과. 없는 검색어는 빈 결과입니다.
+  Map<String, Map<int, List<TmdbMovieDto>>> searchPages = {};
+  bool failSearch = false;
+  final searchGates = <String, Completer<void>>{};
+  final searchCalls = <({int page, String query})>[];
+
   /// 설정하면 discoverMovies가 이 Completer를 기다립니다.
   Completer<void>? discoverGate;
   final discoverCalls = <({int page, List<int>? genreIds})>[];
@@ -100,7 +118,7 @@ class FakeTmdbMovieService extends TmdbMovieService {
   }) async {
     discoverCalls.add((page: page, genreIds: genreIds));
     await discoverGate?.future;
-    if (failDiscover) throw _networkError();
+    if (failDiscover || failDiscoverPages.contains(page)) throw _networkError();
 
     final selected = genreIds;
     final results = (pages[page] ?? const <TmdbMovieDto>[])
@@ -111,7 +129,25 @@ class FakeTmdbMovieService extends TmdbMovieService {
     return TmdbMoviePageDto(
       page: page,
       results: results,
-      totalPages: pages.length,
+      totalPages: totalPagesOverride ?? pages.length,
+      totalResults: results.length,
+    );
+  }
+
+  @override
+  Future<TmdbMoviePageDto> searchMovies({
+    required int page,
+    required String query,
+  }) async {
+    searchCalls.add((page: page, query: query));
+    await searchGates[query]?.future;
+    if (failSearch) throw _networkError();
+    final byPage = searchPages[query] ?? const <int, List<TmdbMovieDto>>{};
+    final results = byPage[page] ?? const <TmdbMovieDto>[];
+    return TmdbMoviePageDto(
+      page: page,
+      results: results,
+      totalPages: byPage.length,
       totalResults: results.length,
     );
   }
@@ -230,6 +266,8 @@ class FakeRatingApiService extends RatingApiService {
   int _nextId = 100;
 
   final created = <Map<String, dynamic>>[];
+  final movieRecords = <Map<String, dynamic>>[];
+  void Function(int movieId)? onMovieRecord;
   final updated = <({int ratingId, int score, String? comment})>[];
   final deleted = <int>[];
 
@@ -254,6 +292,22 @@ class FakeRatingApiService extends RatingApiService {
   }
 
   @override
+  Future<RatingDto> createMovieRecord({
+    required CreateRatingRequest request,
+    required bool addToFavorites,
+  }) async {
+    await _write();
+    final json = {...request.toJson(), 'addToFavorites': addToFavorites};
+    movieRecords.add(json);
+    onMovieRecord?.call(json['movieId'] as int);
+    return _rating(
+      _nextId++,
+      json['movieId'] as int,
+      score: json['score'] as int,
+    );
+  }
+
+  @override
   Future<RatingDto> updateRating({
     required int ratingId,
     required int score,
@@ -270,6 +324,59 @@ class FakeRatingApiService extends RatingApiService {
     final error = failDeleteIds[ratingId];
     if (error != null) throw error;
     deleted.add(ratingId);
+  }
+}
+
+/// v8 즐겨찾기를 메모리 Set으로 흉내 냅니다.
+class FakeFavoriteApiService extends FavoriteApiService {
+  FakeFavoriteApiService([Iterable<int> movieIds = const []])
+    : favorites = {...movieIds},
+      super(Dio());
+
+  final Set<int> favorites;
+  DioException? addError;
+  DioException? deleteError;
+  DioException? checkError;
+  DioException? listError;
+  Completer<void>? saveGate;
+  int addCalls = 0;
+
+  FavoriteResponseDto _dto(int movieId) => FavoriteResponseDto(
+    favoriteId: movieId,
+    movieId: movieId,
+    createdAt: DateTime(2026, 11, 18),
+  );
+
+  @override
+  Future<FavoriteResponseDto> addFavorite(int movieId) async {
+    addCalls++;
+    await saveGate?.future;
+    final error = addError;
+    if (error != null) throw error;
+    favorites.add(movieId);
+    return _dto(movieId);
+  }
+
+  @override
+  Future<List<FavoriteResponseDto>> fetchMyFavorites() async {
+    final error = listError;
+    if (error != null) throw error;
+    return [for (final id in favorites.toList().reversed) _dto(id)];
+  }
+
+  @override
+  Future<bool> checkFavorite(int movieId) async {
+    final error = checkError;
+    if (error != null) throw error;
+    return favorites.contains(movieId);
+  }
+
+  @override
+  Future<void> deleteFavorite(int movieId) async {
+    await saveGate?.future;
+    final error = deleteError;
+    if (error != null) throw error;
+    favorites.remove(movieId);
   }
 }
 
@@ -432,6 +539,7 @@ Future<FakeTmdbMovieService> _pumpApp(
   FakeSignUpService? checkService,
   FakeRatingApiService? ratingService,
   FakeMemberApiService? memberApi,
+  FakeFavoriteApiService? favoriteApi,
   AuthViewModel? auth,
   bool signedIn = true,
   GenrePreference? preference,
@@ -455,6 +563,9 @@ Future<FakeTmdbMovieService> _pumpApp(
           value: ratingService ?? FakeRatingApiService(),
         ),
         Provider<MemberApiService>.value(value: members),
+        Provider<FavoriteApiService>.value(
+          value: favoriteApi ?? FakeFavoriteApiService(),
+        ),
         ChangeNotifierProvider<AuthViewModel>.value(value: session),
       ],
       child: MaterialApp.router(
@@ -720,54 +831,92 @@ void main() {
     });
   });
 
-  group('MovieListViewModel', () {
-    test('중복을 제거하며 최대 30개까지 page 1부터 요청한다', () async {
-      final service = FakeTmdbMovieService(
-        pages: {
-          1: [for (var id = 1; id <= 20; id++) _movie(id)],
-          // 15~20은 앞 페이지와 중복입니다.
-          2: [for (var id = 15; id <= 34; id++) _movie(id)],
-          3: [for (var id = 35; id <= 54; id++) _movie(id)],
-        },
-      );
+  group('9주차 PagedMoviesViewModel', () {
+    Map<int, List<TmdbMovieDto>> threePages() => {
+      1: [for (var id = 1; id <= 20; id++) _movie(id)],
+      // 15~20은 앞 page와 중복입니다.
+      2: [for (var id = 15; id <= 34; id++) _movie(id)],
+      3: [_movie(35)],
+    };
+
+    test('첫 page만 불러오고 더 보기마다 중복 없이 다음 page를 붙인다', () async {
+      final service = FakeTmdbMovieService(pages: threePages());
       final viewModel = MovieListViewModel(service, InMemoryGenrePreference());
 
-      await viewModel.loadInitial();
+      await viewModel.start();
+      expect(viewModel.phase, LoadPhase.ready);
+      expect(viewModel.movies, hasLength(20));
+      expect(service.discoverCalls.map((c) => c.page), [1]);
 
-      expect(viewModel.status, MovieListLoadStatus.success);
-      expect(viewModel.movies, hasLength(30));
-      expect(viewModel.movies.map((movie) => movie.id).toSet(), hasLength(30));
-      expect(service.discoverCalls.map((call) => call.page), [1, 2]);
+      await viewModel.loadNextPage();
+      expect(viewModel.movies, hasLength(34));
+      expect(viewModel.movies.map((m) => m.id).toSet(), hasLength(34));
+
+      await viewModel.loadNextPage();
+      expect(viewModel.hasMore, isFalse);
+      await viewModel.loadNextPage(); // 마지막 page 뒤에는 요청하지 않습니다.
+      expect(service.discoverCalls.map((c) => c.page), [1, 2, 3]);
     });
 
-    test('결과가 30개보다 적으면 마지막 페이지에서 멈추고 오류로 보지 않는다', () async {
+    test('다음 page가 실패하면 목록과 nextPage를 유지하고 같은 page를 다시 요청한다', () async {
+      final service = FakeTmdbMovieService(pages: threePages());
+      final viewModel = MovieListViewModel(service, InMemoryGenrePreference());
+      await viewModel.start();
+
+      service.failDiscover = true;
+      await viewModel.loadNextPage();
+      expect(viewModel.movies, hasLength(20));
+      expect(viewModel.nextPage, 2);
+      expect(viewModel.loadMoreError, isNotNull);
+      expect(viewModel.isLoadingMore, isFalse);
+
+      service.failDiscover = false;
+      await viewModel.loadNextPage();
+      expect(service.discoverCalls.last.page, 2);
+      expect(viewModel.loadMoreError, isNull);
+      expect(viewModel.movies, hasLength(34));
+    });
+
+    test('TMDB total_pages가 500보다 커도 500까지만 조회한다', () async {
       final service = FakeTmdbMovieService(
         pages: {
-          1: [_movie(1), _movie(2)],
-          2: [_movie(3)],
+          1: [_movie(1)],
         },
-      );
-      final viewModel = MovieListViewModel(service, InMemoryGenrePreference());
-
+      )..totalPagesOverride = 900;
+      final viewModel = PagedMoviesViewModel(tmdbApi: service);
       await viewModel.loadInitial();
-
-      expect(viewModel.movies, hasLength(3));
-      expect(viewModel.status, MovieListLoadStatus.success);
+      expect(viewModel.totalPages, 500);
     });
 
-    test('장르를 고르면 목록을 비우고 with_genres로 page 1부터 다시 요청한다', () async {
+    test('장르를 바꾸면 목록·page를 비우고 이전 장르의 늦은 응답은 버린다', () async {
       final service = _defaultService();
       final preference = InMemoryGenrePreference();
       final viewModel = MovieListViewModel(service, preference);
-      await viewModel.loadInitial();
+      await viewModel.start();
+
+      service.discoverGate = Completer<void>();
+      final slow = viewModel.loadInitial(genreIds: [28]);
+      expect(viewModel.movies, isEmpty);
+      final gate = service.discoverGate!;
+      service.discoverGate = null;
+      await viewModel.loadInitial(genreIds: [878]); // 새 조건이 먼저 끝남
+      gate.complete();
+      await slow;
+
+      expect(viewModel.movies.single.title, '우주 영화');
+      expect(viewModel.nextPage, 2);
+    });
+
+    test('장르 선택은 Genre API 순서로 OR 조건을 보내고 저장한다', () async {
+      final service = _defaultService();
+      final preference = InMemoryGenrePreference();
+      final viewModel = MovieListViewModel(service, preference);
+      await viewModel.start();
       service.discoverCalls.clear();
 
       await viewModel.selectGenres([878, 28]);
-
-      // Genre API 순서로 정렬해 OR 조건으로 보냅니다.
       expect(service.discoverCalls.first.page, 1);
       expect(service.discoverCalls.first.genreIds, [28, 878]);
-      expect(viewModel.selectedGenreIds, [28, 878]);
       expect(preference.saved, [28, 878]);
 
       await viewModel.selectGenres(const []);
@@ -775,81 +924,41 @@ void main() {
       expect(viewModel.selectedGenreIds, isNull);
     });
 
-    test('Discover 요청 중에는 장르를 바꾸지 않는다', () async {
+    test('저장된 장르를 복원하고, 장르 저장 실패는 목록 조회를 막지 않는다', () async {
       final service = _defaultService();
-      final viewModel = MovieListViewModel(service, InMemoryGenrePreference());
-      await viewModel.loadInitial();
-
-      service.discoverGate = Completer<void>();
-      final pending = viewModel.selectGenres([28]);
-      expect(viewModel.canChangeGenre, isFalse);
-
-      await viewModel.selectGenres([878]);
-      service.discoverGate!.complete();
-      await pending;
-
-      expect(viewModel.selectedGenreIds, [28]);
-    });
-
-    test('저장된 장르 ID를 복원하고 없는 ID는 버린다', () async {
-      final service = _defaultService();
-      final viewModel = MovieListViewModel(
+      final restored = MovieListViewModel(
         service,
         InMemoryGenrePreference([878, 9999]),
       );
+      await restored.start();
+      expect(restored.selectedGenreIds, [878]);
+      expect(restored.movies.single.title, '우주 영화');
 
-      await viewModel.loadInitial();
-
-      expect(viewModel.selectedGenreIds, [878]);
-      expect(service.discoverCalls.first.genreIds, [878]);
-      expect(viewModel.movies.single.title, '우주 영화');
+      final throwing = MovieListViewModel(
+        _defaultService(),
+        _ThrowingGenrePreference(),
+      );
+      await throwing.start();
+      await throwing.selectGenres([878]);
+      expect(throwing.phase, LoadPhase.ready);
     });
 
-    test('결과가 없으면 Empty, 실패하면 Error 상태가 된다', () async {
+    test('결과가 없으면 empty, 첫 page 실패는 error이고 다시 시도하면 회복한다', () async {
       final empty = MovieListViewModel(
         FakeTmdbMovieService(pages: {1: const []}),
         InMemoryGenrePreference(),
       );
-      await empty.loadInitial();
-      expect(empty.status, MovieListLoadStatus.empty);
+      await empty.start();
+      expect(empty.phase, LoadPhase.empty);
 
       final service = _defaultService()..failDiscover = true;
       final failed = MovieListViewModel(service, InMemoryGenrePreference());
-      await failed.loadInitial();
-      expect(failed.status, MovieListLoadStatus.error);
+      await failed.start();
+      expect(failed.phase, LoadPhase.error);
 
       service.failDiscover = false;
-      await failed.retry();
-      expect(failed.status, MovieListLoadStatus.success);
-    });
-
-    test('새로고침이 실패해도 최근 성공 목록을 유지한다', () async {
-      final service = _defaultService();
-      final viewModel = MovieListViewModel(service, InMemoryGenrePreference());
-      await viewModel.loadInitial();
-
-      service.failDiscover = true;
-      final succeeded = await viewModel.refresh();
-
-      expect(succeeded, isFalse);
-      expect(viewModel.movies, hasLength(2));
-      expect(viewModel.status, MovieListLoadStatus.success);
-      expect(viewModel.isRefreshing, isFalse);
-    });
-  });
-
-  group('MovieListViewModel 오류 경로', () {
-    test('장르 저장이 실패해도 Loading에 멈추지 않는다', () async {
-      final viewModel = MovieListViewModel(
-        _defaultService(),
-        _ThrowingGenrePreference(),
-      );
-      await viewModel.loadInitial();
-
-      await viewModel.selectGenres([878]);
-
-      expect(viewModel.status, MovieListLoadStatus.success);
-      expect(viewModel.movies.single.title, '우주 영화');
+      await failed.refresh();
+      expect(failed.phase, LoadPhase.ready);
     });
 
     testWidgets('Genre API 실패 후 "전체" 칩을 누르면 장르부터 다시 불러온다', (tester) async {
@@ -864,22 +973,9 @@ void main() {
       await tester.tap(find.widgetWithText(FilterChip, '전체'));
       await tester.pumpAndSettle();
 
-      // 영화만 다시 조회하지 않고 장르 Chip까지 복구됩니다.
       expect(find.widgetWithText(FilterChip, '액션'), findsOneWidget);
       expect(find.text('영화 1'), findsOneWidget);
       expect(service.discoverCalls.first.genreIds, isNull);
-    });
-
-    test('빈 목록에서 새로고침이 실패하면 Empty 대신 Error가 된다', () async {
-      final service = FakeTmdbMovieService(pages: {1: const []});
-      final viewModel = MovieListViewModel(service, InMemoryGenrePreference());
-      await viewModel.loadInitial();
-      expect(viewModel.status, MovieListLoadStatus.empty);
-
-      service.failDiscover = true;
-      expect(await viewModel.refresh(), isFalse);
-
-      expect(viewModel.status, MovieListLoadStatus.error);
     });
   });
 
@@ -937,7 +1033,7 @@ void main() {
 
       await tester.tap(find.text('영화'));
       await tester.pumpAndSettle();
-      expect(find.byType(GridView), findsOneWidget);
+      expect(find.byType(CustomScrollView), findsOneWidget);
       expect(
         tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
         1,
@@ -989,7 +1085,7 @@ void main() {
 
       service.discoverGate!.complete();
       await tester.pumpAndSettle();
-      expect(find.byType(GridView), findsOneWidget);
+      expect(find.byType(CustomScrollView), findsOneWidget);
     });
 
     testWidgets('실패하면 Error 화면을 보여주고 다시 시도하면 목록을 불러온다', (tester) async {
@@ -1014,37 +1110,64 @@ void main() {
       expect(find.text('불러올 영화가 없어요'), findsOneWidget);
     });
 
-    testWidgets('새로고침 실패 시 목록을 유지하고 재시도 Dialog를 띄운다', (tester) async {
-      final service = await _pumpApp(tester, location: '/movies');
-      service.failDiscover = true;
+    testWidgets('스크롤 끝에서 다음 page를 붙이고, 실패하면 같은 page 재시도 버튼을 보여준다', (
+      tester,
+    ) async {
+      final service = FakeTmdbMovieService(
+        pages: {
+          1: [for (var id = 1; id <= 20; id++) _movie(id)],
+          2: [for (var id = 21; id <= 40; id++) _movie(id)],
+        },
+      )..failDiscoverPages.add(2);
+      await _pumpApp(tester, location: '/movies', service: service);
 
-      await tester.fling(find.byType(GridView), const Offset(0, 400), 1000);
+      await tester.fling(
+        find.byType(CustomScrollView),
+        const Offset(0, -6000),
+        3000,
+      );
       await tester.pumpAndSettle();
+      expect(find.text('다음 페이지를 불러오지 못했습니다.'), findsOneWidget);
+      expect(find.text('영화 1'), findsNothing); // 기존 카드는 그대로(스크롤 위쪽)
 
-      expect(find.text('영화를 불러오지 못했어요'), findsOneWidget);
-      expect(find.text('영화 1'), findsOneWidget);
-
-      service.failDiscover = false;
-      final calls = service.discoverCalls.length;
-      await tester.tap(find.text('재시도'));
+      service.failDiscoverPages.clear();
+      await tester.tap(find.text('다음 페이지 다시 시도'));
       await tester.pumpAndSettle();
-
-      expect(find.byType(AlertDialog), findsNothing);
-      expect(service.discoverCalls.length, greaterThan(calls));
-      expect(service.discoverCalls.last.page, 1);
+      expect(service.discoverCalls.map((c) => c.page), [1, 2, 2]);
+      await tester.fling(
+        find.byType(CustomScrollView),
+        const Offset(0, -6000),
+        3000,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('더 이상 조회할 페이지가 없습니다.'), findsOneWidget);
     });
   });
 
   group('MovieDetailScreen', () {
-    testWidgets('즐겨찾기를 누르면 아이콘이 바뀌고 Snackbar를 표시한다', (tester) async {
-      await _pumpApp(tester, location: '/movies/1');
+    testWidgets('북마크는 서버 여부로 시작하고, 등록 성공을 확인한 뒤 바뀐다', (tester) async {
+      final favorites = FakeFavoriteApiService();
+      await _pumpApp(tester, location: '/movies/1', favoriteApi: favorites);
 
       expect(find.byIcon(Icons.bookmark_border), findsOneWidget);
-      await tester.tap(find.text('즐겨찾기'));
+      favorites.saveGate = Completer<void>();
+      await tester.tap(find.byTooltip('즐겨찾기 추가'));
       await tester.pump();
+      // 요청 중에는 북마크 자리에만 인디케이터, 아이콘은 아직 바꾸지 않습니다.
+      expect(find.byIcon(Icons.bookmark_border), findsNothing);
+      expect(find.byIcon(Icons.bookmark), findsNothing);
 
+      favorites.saveGate!.complete();
+      favorites.saveGate = null;
+      await tester.pumpAndSettle();
       expect(find.byIcon(Icons.bookmark), findsOneWidget);
-      expect(find.text('즐겨찾기에 추가했어요.'), findsOneWidget);
+      expect(find.text('즐겨찾기에 추가했습니다.'), findsOneWidget);
+      expect(favorites.favorites, {1});
+
+      await tester.tap(find.byTooltip('즐겨찾기 해제'));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.bookmark_border), findsOneWidget);
+      expect(find.text('즐겨찾기에서 삭제했습니다.'), findsOneWidget);
     });
 
     testWidgets('정수 별점과 코멘트를 TMDB id로 v7 등록하고 result로 화면을 갱신한다', (
@@ -1087,7 +1210,7 @@ void main() {
         'comment': '재밌어요',
       });
       expect(find.text('내 평점 3점'), findsOneWidget);
-      expect(find.textContaining('평점을 등록했습니다.'), findsOneWidget);
+      expect(find.text('평점을 저장했습니다.'), findsOneWidget);
     });
 
     testWidgets('등록 409면 Dialog를 유지하고 서버 문구를 보여준다', (tester) async {
@@ -1382,6 +1505,7 @@ void main() {
   group('8주차 AuthInterceptor', () {
     Future<Map<String, dynamic>> headersFor(
       String url, {
+      String method = 'GET',
       TokenStorage? storage,
     }) async {
       final dio = Dio();
@@ -1393,41 +1517,61 @@ void main() {
           host: 'workbook.devnoco.com',
         ),
       );
-      await dio.get(url, options: Options(headers: {'Authorization': 'old'}));
+      await dio.request(
+        url,
+        options: Options(method: method, headers: {'Authorization': 'old'}),
+      );
       return adapter.lastHeaders;
     }
 
     test('워크북 보호 path에만 Bearer를 붙이고 다른 host·공개 path에는 붙이지 않는다', () async {
       expect(
         (await headersFor(
-          'https://workbook.devnoco.com/v7/ratings/3',
+          'https://workbook.devnoco.com/v8/ratings/3',
         ))['Authorization'],
         'Bearer secret-jwt',
       );
       expect(
         (await headersFor(
-          'https://workbook.devnoco.com/v7/members/me',
+          'https://workbook.devnoco.com/v8/members/me',
         ))['Authorization'],
         'Bearer secret-jwt',
       );
       expect(
         (await headersFor(
-          'https://workbook.devnoco.com/v7/members/1/ratings',
+          'https://workbook.devnoco.com/v8/members/1/ratings',
         ))['Authorization'],
         isNull,
       );
       expect(
         (await headersFor(
-          'https://api.themoviedb.org/v7/ratings',
+          'https://api.themoviedb.org/v8/ratings',
         ))['Authorization'],
         isNull,
       );
     });
 
+    test('9주차 즐겨찾기·영화 기록은 정해진 method에만 Bearer를 붙인다', () async {
+      Future<Object?> auth(String path, String method) async =>
+          (await headersFor(
+            'https://workbook.devnoco.com$path',
+            method: method,
+          ))['Authorization'];
+
+      expect(await auth('/v8/favorites', 'GET'), 'Bearer secret-jwt');
+      expect(await auth('/v8/favorites', 'POST'), 'Bearer secret-jwt');
+      expect(await auth('/v8/favorites/550', 'GET'), 'Bearer secret-jwt');
+      expect(await auth('/v8/favorites/550', 'DELETE'), 'Bearer secret-jwt');
+      expect(await auth('/v8/movie-records', 'POST'), 'Bearer secret-jwt');
+      expect(await auth('/v8/favorites/550', 'PATCH'), isNull);
+      expect(await auth('/v8/favorites/abc', 'GET'), isNull);
+      expect(await auth('/v8/members/nickname/a', 'GET'), isNull);
+    });
+
     test('저장소를 못 읽으면 서버 401이 아닌 다른 오류로 거절한다', () async {
       await expectLater(
         headersFor(
-          'https://workbook.devnoco.com/v7/ratings',
+          'https://workbook.devnoco.com/v8/ratings',
           storage: MemoryTokenStorage('x')..failRead = true,
         ),
         throwsA(
@@ -1857,6 +2001,331 @@ void main() {
       await tester.pumpAndSettle();
       expect(ratings.deleted, [2, 1]);
       expect(auth.sessionRatings, isEmpty);
+    });
+  });
+
+  group('9주차 내 즐겨찾기', () {
+    test('mapBounded는 동시에 최대 N개만 실행하고 입력 순서를 지킨다', () async {
+      var running = 0;
+      var peak = 0;
+      final result = await mapBounded([1, 2, 3, 4, 5, 6, 7], 3, (n) async {
+        running++;
+        peak = running > peak ? running : peak;
+        await Future<void>.delayed(Duration.zero);
+        running--;
+        return n * 10;
+      });
+      expect(result, [10, 20, 30, 40, 50, 60, 70]);
+      expect(peak, 3);
+    });
+
+    test('409·404는 POST/DELETE를 반복하지 않고 서버 여부로 맞춘다', () async {
+      final favorites = FakeFavoriteApiService([550])
+        ..addError = _apiError(409, 'FAVORITE409_1', '이미 즐겨찾기');
+      final auth = await _auth();
+      final viewModel = FavoriteDetailViewModel(
+        movieId: 550,
+        favoriteApi: favorites,
+        auth: auth,
+      );
+      // 화면은 아직 등록 전이라고 알고 있는 상황(다른 기기에서 등록됨)을 만듭니다.
+      await viewModel.load();
+      favorites.favorites.clear();
+      viewModel.isFavorite = false;
+      favorites.favorites.add(550);
+
+      await viewModel.toggle();
+      expect(favorites.addCalls, 1);
+      expect(viewModel.isFavorite, isTrue);
+      expect(viewModel.errorMessage, isNull);
+
+      favorites.deleteError = _networkError();
+      await viewModel.toggle();
+      expect(viewModel.isFavorite, isTrue); // 실패하면 이전 상태 유지
+      expect(viewModel.errorMessage, '즐겨찾기 해제에 실패했습니다.');
+    });
+
+    test('즐겨찾기 401(AUTH401_4)은 세션을 정리하고, 로그아웃 뒤 늦은 응답은 버린다', () async {
+      final favorites = FakeFavoriteApiService()
+        ..checkError = _authError('AUTH401_4');
+      final auth = await _auth();
+      final viewModel = FavoriteDetailViewModel(
+        movieId: 1,
+        favoriteApi: favorites,
+        auth: auth,
+      );
+      await viewModel.load();
+      expect(auth.status, AuthStatus.signedOut);
+      expect(auth.sessionExpired, isTrue);
+
+      final auth2 = await _auth();
+      final late = FavoritesViewModel(
+        favoriteApi: FakeFavoriteApiService([1]),
+        tmdbApi: _defaultService(),
+        auth: auth2,
+      );
+      final pending = late.refresh();
+      await auth2.logout();
+      await pending;
+      expect(late.items, isEmpty);
+    });
+
+    test('영화 정보 한 건만 실패하면 그 카드만 placeholder로 두고 재조회한다', () async {
+      final tmdb = _defaultService();
+      final viewModel = FavoritesViewModel(
+        favoriteApi: FakeFavoriteApiService([1, 999]),
+        tmdbApi: tmdb,
+        auth: await _auth(),
+      );
+      await viewModel.refresh();
+      expect(viewModel.phase, LoadPhase.ready);
+      expect(viewModel.items.map((i) => i.movie?.title), [null, '영화 1']);
+
+      tmdb.popular = [...tmdb.popular, _movie(999, title: '복구된 영화')];
+      await viewModel.retryMovie(999);
+      expect(viewModel.items.first.movie?.title, '복구된 영화');
+    });
+
+    testWidgets('마이페이지 → 내 즐겨찾기 → 상세 해제 → 뒤로가기하면 목록이 갱신된다', (tester) async {
+      final favorites = FakeFavoriteApiService([1, 2]);
+      await _pumpApp(
+        tester,
+        location: '/my',
+        favoriteApi: favorites,
+        size: const Size(390, 1600),
+      );
+
+      await tester.tap(find.text('내 즐겨찾기'));
+      await tester.pumpAndSettle();
+      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.text('영화 1'), findsOneWidget);
+      expect(find.text('영화 2'), findsOneWidget);
+
+      await tester.tap(find.text('영화 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('즐겨찾기 해제'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+
+      expect(find.text('영화 1'), findsNothing);
+      expect(find.text('영화 2'), findsOneWidget);
+    });
+
+    testWidgets('빈 목록과 조회 오류를 서로 다른 화면으로 보여준다', (tester) async {
+      final favorites = FakeFavoriteApiService()..listError = _networkError();
+      await _pumpApp(tester, location: '/my/favorites', favoriteApi: favorites);
+      expect(find.text('내 즐겨찾기 목록을 불러오지 못했습니다.'), findsOneWidget);
+
+      favorites.listError = null;
+      await tester.tap(find.text('다시 시도'));
+      await tester.pumpAndSettle();
+      expect(find.text('아직 즐겨찾기한 영화가 없습니다.'), findsOneWidget);
+    });
+
+    testWidgets('로그아웃 후 다른 계정으로 로그인하면 이전 계정 즐겨찾기가 보이지 않는다', (tester) async {
+      final favorites = FakeFavoriteApiService([1]);
+      final members = FakeMemberApiService();
+      final auth = await _auth(memberApi: members);
+      await _pumpApp(
+        tester,
+        location: '/my/favorites',
+        auth: auth,
+        memberApi: members,
+        favoriteApi: favorites,
+      );
+      expect(find.text('영화 1'), findsOneWidget);
+
+      await auth.logout();
+      await tester.pumpAndSettle();
+      expect(find.byType(LoginScreen), findsOneWidget);
+
+      // 다른 계정(B)의 서버 즐겨찾기는 비어 있습니다.
+      favorites.favorites.clear();
+      members.member = MemberInfo(
+        email: 'b@example.com',
+        nickname: '다른사람',
+        createdAt: DateTime(2026, 11, 1),
+      );
+      await auth.login('b@example.com', 'Password1!');
+      await tester.pumpAndSettle();
+      final router = GoRouter.of(tester.element(find.byType(NavigationBar)));
+      router.push('/my/favorites');
+      await tester.pumpAndSettle();
+
+      expect(find.text('영화 1'), findsNothing);
+      expect(find.text('아직 즐겨찾기한 영화가 없습니다.'), findsOneWidget);
+    });
+  });
+
+  group('9주차 영화 검색', () {
+    testWidgets('검색 아이콘으로 들어가 제출하면 결과를 보여주고 더 보기로 이어서 불러온다', (tester) async {
+      final service = _defaultService()
+        ..searchPages = {
+          '우주': {
+            1: [_movie(31, title: '우주 1')],
+            2: [_movie(32, title: '우주 2')],
+          },
+        };
+      await _pumpApp(
+        tester,
+        location: '/movies',
+        service: service,
+        size: const Size(390, 1200),
+      );
+
+      await tester.tap(find.byTooltip('검색'));
+      await tester.pumpAndSettle();
+      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.text('검색어를 입력해 주세요.'), findsOneWidget);
+
+      // 빈 검색어는 서버에 보내지 않습니다.
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(service.searchCalls, isEmpty);
+
+      await tester.enterText(find.byType(TextField), '우주');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(find.text('우주 1'), findsOneWidget);
+
+      await tester.tap(find.text('더 보기'));
+      await tester.pumpAndSettle();
+      expect(find.text('우주 2'), findsOneWidget);
+      expect(find.text('더 이상 조회할 페이지가 없습니다.'), findsOneWidget);
+
+      await tester.tap(find.text('우주 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Cinema Archive'), findsOneWidget);
+    });
+
+    testWidgets('입력이 500ms 멈추면 마지막 검색어만 요청하고 이전 검색어의 늦은 응답은 버린다', (
+      tester,
+    ) async {
+      final service = _defaultService()
+        ..searchPages = {
+          '어벤': {
+            1: [_movie(41, title: '어벤 결과')],
+          },
+          '어벤져스': {
+            1: [_movie(42, title: '어벤져스 결과')],
+          },
+        };
+      await _pumpApp(tester, location: '/movies/search', service: service);
+
+      await tester.enterText(find.byType(TextField), '어');
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.enterText(find.byType(TextField), '어벤');
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(service.searchCalls.map((c) => c.query), ['어벤']);
+
+      // '어벤' 응답이 늦는 사이 새 검색어를 제출합니다.
+      service.searchGates['어벤'] = Completer<void>();
+      await tester.enterText(find.byType(TextField), '어벤져스');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      service.searchGates['어벤']!.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text('어벤져스 결과'), findsOneWidget);
+      expect(find.text('어벤 결과'), findsNothing);
+    });
+
+    testWidgets('결과 없음과 오류를 구분한다', (tester) async {
+      final service = _defaultService()..failSearch = true;
+      await _pumpApp(tester, location: '/movies/search', service: service);
+      await tester.enterText(find.byType(TextField), '없는영화');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(find.text('검색 결과를 불러오지 못했습니다.'), findsOneWidget);
+
+      service.failSearch = false;
+      await tester.tap(find.text('다시 시도'));
+      await tester.pumpAndSettle();
+      expect(find.text('"없는영화" 검색 결과가 없습니다.'), findsOneWidget);
+    });
+  });
+
+  group('9주차 Challenge 평점·즐겨찾기 통합 저장', () {
+    Future<void> rateFive(WidgetTester tester) async {
+      await tester.tap(find.text('평점 남기기'));
+      await tester.pumpAndSettle();
+      final star = find
+          .descendant(
+            of: find.byType(Dialog),
+            matching: find.byIcon(Icons.star),
+          )
+          .at(4);
+      await tester.tapAt(tester.getCenter(star) + const Offset(10, 0));
+      await tester.pump();
+    }
+
+    testWidgets('즐겨찾기 체크 시 movie-records로 한 번에 저장하고 북마크를 서버 값으로 맞춘다', (
+      tester,
+    ) async {
+      final ratings = FakeRatingApiService();
+      final favorites = FakeFavoriteApiService();
+      ratings.onMovieRecord = (movieId) => favorites.favorites.add(movieId);
+      await _pumpApp(
+        tester,
+        location: '/movies/1',
+        ratingService: ratings,
+        favoriteApi: favorites,
+      );
+
+      await rateFive(tester);
+      await tester.tap(find.text('즐겨찾기에도 추가'));
+      await tester.tap(find.widgetWithText(ElevatedButton, '확인'));
+      await tester.pumpAndSettle();
+
+      expect(ratings.movieRecords.single, {
+        'movieId': 1,
+        'score': 5,
+        'addToFavorites': true,
+      });
+      expect(ratings.created, isEmpty);
+      expect(find.text('평점을 저장했습니다.'), findsOneWidget);
+      expect(find.byIcon(Icons.bookmark), findsOneWidget);
+    });
+
+    testWidgets('이미 즐겨찾기한 영화는 체크박스 없이 평점만 저장한다', (tester) async {
+      final ratings = FakeRatingApiService();
+      await _pumpApp(
+        tester,
+        location: '/movies/1',
+        ratingService: ratings,
+        favoriteApi: FakeFavoriteApiService([1]),
+      );
+      await rateFive(tester);
+      expect(find.text('즐겨찾기에도 추가'), findsNothing);
+      await tester.tap(find.widgetWithText(ElevatedButton, '확인'));
+      await tester.pumpAndSettle();
+      expect(ratings.created, hasLength(1));
+      expect(ratings.movieRecords, isEmpty);
+    });
+
+    testWidgets('RATING409_1은 Dialog를 닫고 Snackbar, 400은 Dialog 안에서 입력을 유지한다', (
+      tester,
+    ) async {
+      final ratings = FakeRatingApiService();
+      await _pumpApp(tester, location: '/movies/1', ratingService: ratings);
+
+      await rateFive(tester);
+      ratings.writeError = _apiError(400, 'COMMON400', '별점은 5점 이하여야 합니다.');
+      await tester.tap(find.widgetWithText(ElevatedButton, '확인'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.text('별점은 5점 이하여야 합니다.'), findsOneWidget);
+
+      ratings.writeError = _apiError(
+        409,
+        'RATING409_1',
+        '이미 이 영화에 평점을 남기셨습니다.',
+      );
+      await tester.tap(find.widgetWithText(ElevatedButton, '확인'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.text('이미 이 영화에 평점을 남기셨습니다.'), findsOneWidget);
     });
   });
 }

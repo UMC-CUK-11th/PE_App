@@ -11,7 +11,7 @@ import 'auth_view_model.dart';
 
 enum MyRatingsLoadStatus { idle, loading, success, empty }
 
-/// "내가 등록한 평점" 화면. v7에는 토큰 기반 내 평점 목록 GET이 없어
+/// "내가 등록한 평점" 화면. v8에도 토큰 기반 내 평점 목록 GET이 없어
 /// 이번 로그인 세션에서 등록한 Rating(AuthViewModel.sessionRatings)만 보여주고 수정·삭제합니다.
 /// 영화 제목·포스터는 movieId(TMDB id)로 TMDB에서 찾고, 없으면 placeholder로 둡니다.
 class MyRatingsViewModel extends ChangeNotifier {

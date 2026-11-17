@@ -38,7 +38,7 @@ class AuthViewModel extends ChangeNotifier {
   bool sessionExpired = false;
   bool storageCleanupInProgress = false;
 
-  /// 이번 로그인 세션에서 등록한 평점. v7에는 토큰 기반 "내 평점 목록 GET"이 없어
+  /// 이번 로그인 세션에서 등록한 평점. v8에도 토큰 기반 "내 평점 목록 GET"이 없어
   /// 등록 응답의 Rating으로만 채우고, 세션이 끝나면 비웁니다.
   final List<RatingDto> sessionRatings = [];
 

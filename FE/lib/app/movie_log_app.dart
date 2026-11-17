@@ -7,6 +7,7 @@ import '../core/network/movie_log_client.dart';
 import '../core/network/tmdb_client.dart';
 import '../core/storage/token_storage.dart';
 import '../data/services/auth_api_service.dart';
+import '../data/services/favorite_api_service.dart';
 import '../data/services/member_api_service.dart';
 import '../data/services/rating_api_service.dart';
 import '../data/services/sign_up_service.dart';
@@ -35,6 +36,9 @@ class MovieLogApp extends StatelessWidget {
         Provider<AuthApiService>(create: (_) => AuthApiService(publicClient)),
         Provider<SignUpService>(create: (_) => SignUpService(publicClient)),
         Provider<MemberApiService>(create: (_) => MemberApiService(authClient)),
+        Provider<FavoriteApiService>(
+          create: (_) => FavoriteApiService(authClient),
+        ),
         // 조회는 공개, 등록·수정·삭제는 보호 Client로 보냅니다.
         Provider<RatingApiService>(
           create: (_) => RatingApiService(publicClient, authClient),

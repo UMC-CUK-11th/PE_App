@@ -1,6 +1,6 @@
 import 'common_response.dart';
 
-/// GET·PATCH /v7/members/me result. memberId와 password는 담기지 않습니다.
+/// GET·PATCH /v8/members/me result. memberId와 password는 담기지 않습니다.
 class MemberInfo {
   const MemberInfo({
     required this.email,

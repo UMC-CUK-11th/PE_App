@@ -5,7 +5,7 @@ import '../models/tmdb_movie_dto.dart';
 import '../models/tmdb_movie_page.dart';
 
 /// HTTP 요청과 DTO 변환만 담당합니다. 상태가 없어 여러 ViewModel이 공유합니다.
-/// "인기 5개", "최대 30개", "선택 장르" 같은 화면 정책은 ViewModel 책임입니다.
+/// "인기 5개", "한 page씩 더 보기", "선택 장르" 같은 화면 정책은 ViewModel 책임입니다.
 class TmdbMovieService {
   TmdbMovieService(this._dio);
 
@@ -35,6 +35,23 @@ class TmdbMovieService {
         'include_video': false,
         if (genreIds != null && genreIds.isNotEmpty)
           'with_genres': genreIds.join('|'),
+      },
+    );
+    return TmdbMoviePageDto.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// 검색어가 비어 있으면 ViewModel에서 먼저 막고 호출하지 않습니다.
+  Future<TmdbMoviePageDto> searchMovies({
+    required int page,
+    required String query,
+  }) async {
+    final response = await _dio.get(
+      '/search/movie',
+      queryParameters: {
+        'query': query,
+        'page': page,
+        'language': 'ko-KR',
+        'include_adult': false,
       },
     );
     return TmdbMoviePageDto.fromJson(response.data as Map<String, dynamic>);
