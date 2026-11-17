@@ -1,36 +1,87 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
+import '../data/models/member_info.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
+import '../view_models/auth_view_model.dart';
 import '../widgets/common_app_bar.dart';
+import '../widgets/movielog_button.dart';
 import '../widgets/stat_item.dart';
 
+/// 마이페이지. 이메일·닉네임·가입일은 GET me 결과(AuthViewModel.member)를 구독합니다.
+/// 사진·통계·장르는 기존 디자인 예시입니다.
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthViewModel>();
+    final member = auth.member;
+
     return Scaffold(
-      appBar: const CommonAppBar(title: '내 프로필'),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: const [
-              ProfileHeader(),
-              SizedBox(height: 16),
-              EditProfileButton(),
-              SizedBox(height: 32),
-              ProfileStats(),
-              SizedBox(height: 32),
-              FavoriteGenres(),
-              SizedBox(height: 32),
-              MyRatingsEntry(),
-              SizedBox(height: 32),
-            ],
+      appBar: CommonAppBar(
+        title: '내 프로필',
+        actions: [
+          TextButton(
+            // 토큰과 member를 지우면 Router가 /login으로 보냅니다.
+            onPressed: auth.storageCleanupInProgress ? null : auth.logout,
+            style: TextButton.styleFrom(foregroundColor: AppColors.violet),
+            child: const Text('로그아웃'),
           ),
+        ],
+      ),
+      // Challenge: 내 정보 로딩 중이면 전체 인디케이터, 실패면 재시도 버튼.
+      body: member == null
+          ? Center(
+              child: auth.memberStatus == MemberLoadStatus.error
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          '내 정보를 불러오지 못했어요.',
+                          style: AppTextStyles.bodyMedium,
+                        ),
+                        const SizedBox(height: 12),
+                        MovieLogButton(
+                          label: '다시 시도',
+                          width: 120,
+                          onPressed: () => auth.loadMember(force: true),
+                        ),
+                      ],
+                    )
+                  : const CircularProgressIndicator(color: AppColors.violet),
+            )
+          : _ProfileBody(member: member),
+    );
+  }
+}
+
+class _ProfileBody extends StatelessWidget {
+  const _ProfileBody({required this.member});
+
+  final MemberInfo member;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ProfileHeader(member: member),
+            const SizedBox(height: 16),
+            const EditProfileButton(),
+            const SizedBox(height: 32),
+            const ProfileStats(),
+            const SizedBox(height: 32),
+            const FavoriteGenres(),
+            const SizedBox(height: 32),
+            const MyRatingsEntry(),
+            const SizedBox(height: 32),
+          ],
         ),
       ),
     );
@@ -38,10 +89,15 @@ class ProfileScreen extends StatelessWidget {
 }
 
 class ProfileHeader extends StatelessWidget {
-  const ProfileHeader({super.key});
+  const ProfileHeader({super.key, required this.member});
+
+  final MemberInfo member;
+
+  static String _two(int value) => value.toString().padLeft(2, '0');
 
   @override
   Widget build(BuildContext context) {
+    final joined = member.createdAt.toLocal();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -57,15 +113,20 @@ class ProfileHeader extends StatelessWidget {
         const SizedBox(height: 12),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [Text('무비러버', style: AppTextStyles.titleLarge)],
+          children: [Text(member.nickname, style: AppTextStyles.titleLarge)],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
-          '매주 주말엔 영화관으로 출근하는 프로 관람객. 좋은 영화를 보고 기록하는 것을 좋아합니다.',
+          member.email,
           textAlign: TextAlign.center,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
           style: AppTextStyles.bodyMedium.copyWith(color: AppColors.gray),
+        ),
+        const SizedBox(height: 4),
+        // Challenge: 가입일을 "2026.10.10 가입" 형식으로 표시합니다.
+        Text(
+          '${joined.year}.${_two(joined.month)}.${_two(joined.day)} 가입',
+          textAlign: TextAlign.center,
+          style: AppTextStyles.bodySmall,
         ),
       ],
     );
@@ -139,16 +200,7 @@ class EditProfileButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: OutlinedButton(
-        onPressed: () {
-          ScaffoldMessenger.of(context)
-            ..hideCurrentSnackBar()
-            ..showSnackBar(
-              const SnackBar(
-                content: Text('프로필 수정은 이후 주차에 연결됩니다.'),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-        },
+        onPressed: () => context.push('/my/profile/edit'),
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.violet,
           side: const BorderSide(color: AppColors.violet),

@@ -1,0 +1,23 @@
+import 'package:dio/dio.dart';
+
+import '../models/member_info.dart';
+
+/// 내 정보(v7). 보호 Client를 사용해 Authorization 헤더로 회원을 식별합니다.
+class MemberApiService {
+  MemberApiService(this._authDio);
+
+  final Dio _authDio;
+
+  Future<MemberInfo> fetchMe() async {
+    final response = await _authDio.get('/v7/members/me');
+    return parseMemberInfo(response.data);
+  }
+
+  Future<MemberInfo> updateNickname(String nickname) async {
+    final response = await _authDio.patch(
+      '/v7/members/me',
+      data: {'nickname': nickname},
+    );
+    return parseMemberInfo(response.data);
+  }
+}

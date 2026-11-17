@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models/create_member_request.dart';
-import '../../view_models/learning_member_session.dart';
 import '../../view_models/sign_up_view_model.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../widgets/movielog_button.dart';
@@ -63,7 +62,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     FocusScope.of(context).unfocus();
     final viewModel = context.read<SignUpViewModel>();
-    final session = context.read<LearningMemberSession>();
     final messenger = ScaffoldMessenger.of(context);
     await viewModel.submit(
       CreateMemberRequest(
@@ -74,13 +72,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
     if (!mounted) return;
 
-    final memberId = viewModel.createdMemberId;
-    if (memberId != null) {
-      session.setMemberId(memberId);
+    if (viewModel.createdMemberId != null) {
+      // v7부터 회원은 토큰으로 식별하므로 가입 뒤 로그인으로 보냅니다.
       messenger.showSnackBar(
-        SnackBar(content: Text('회원가입이 완료되었습니다. (memberId $memberId)')),
+        const SnackBar(content: Text('회원가입이 완료되었습니다. 로그인해 주세요.')),
       );
-      context.go('/movies');
+      context.go('/login');
       return;
     }
     // snackbarMessage는 Form 어디에도 붙지 않아 제출 직후 한 번만 꺼내 보여줍니다.
@@ -93,7 +90,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   /// 제출 중에는 뒤로가기·스와이프 백을 막고, 제출이 끝나면 다시 나갈 수 있습니다.
   void _onPopInvoked(bool didPop, Object? result) {
     if (didPop || context.read<SignUpViewModel>().isSubmitting) return;
-    context.canPop() ? context.pop() : context.go('/start');
+    context.canPop() ? context.pop() : context.go('/login');
   }
 
   @override
