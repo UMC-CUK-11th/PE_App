@@ -11,3 +11,8 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+
+# 7주차 JWT. 운영에서는 반드시 환경 변수 JWT_SECRET(32바이트 이상)로 덮어씁니다.
+jwt:
+  secret: ${JWT_SECRET:local-dev-only-secret-change-me-0123456789abcdef}
+  access-expiration-seconds: ${JWT_ACCESS_EXPIRATION:3600}
