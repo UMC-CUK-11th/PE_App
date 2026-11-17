@@ -1,4 +1,4 @@
-/// v5 유저별 평점 조회 응답의 한 항목입니다.
+/// v6 유저별 평점 조회 응답의 한 항목입니다.
 class RatingDto {
   const RatingDto({
     required this.ratingId,

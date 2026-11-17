@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../data/models/create_member_request.dart';
+import '../../view_models/learning_member_session.dart';
 import '../../view_models/sign_up_view_model.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../widgets/movielog_button.dart';
@@ -54,21 +56,51 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   void _onFieldChanged(String _) => setState(() {});
 
-  void _submit() {
+  /// 로컬 Form 검증 뒤 v6 회원가입 POST를 보냅니다. 비밀번호는 로그에 남기지 않습니다.
+  Future<void> _submit() async {
     final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid || !_agreedToTerms) return;
 
     FocusScope.of(context).unfocus();
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('회원가입이 완료되었습니다.')));
-    context.go('/home');
+    final viewModel = context.read<SignUpViewModel>();
+    final session = context.read<LearningMemberSession>();
+    final messenger = ScaffoldMessenger.of(context);
+    await viewModel.submit(
+      CreateMemberRequest(
+        email: _emailController.text,
+        password: _passwordController.text,
+        nickname: _nicknameController.text,
+      ),
+    );
+    if (!mounted) return;
+
+    final memberId = viewModel.createdMemberId;
+    if (memberId != null) {
+      session.setMemberId(memberId);
+      messenger.showSnackBar(
+        SnackBar(content: Text('회원가입이 완료되었습니다. (memberId $memberId)')),
+      );
+      context.go('/movies');
+      return;
+    }
+    // snackbarMessage는 Form 어디에도 붙지 않아 제출 직후 한 번만 꺼내 보여줍니다.
+    final message = viewModel.snackbarMessage;
+    if (message != null) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  /// 제출 중에는 뒤로가기·스와이프 백을 막고, 제출이 끝나면 다시 나갈 수 있습니다.
+  void _onPopInvoked(bool didPop, Object? result) {
+    if (didPop || context.read<SignUpViewModel>().isSubmitting) return;
+    context.canPop() ? context.pop() : context.go('/start');
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
+      onPopInvokedWithResult: _onPopInvoked,
       child: Scaffold(
         appBar: const CommonAppBar(title: '회원가입', centerTitle: true),
         body: SafeArea(
@@ -180,7 +212,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
             validator: SignUpValidators.password,
             obscureText: _obscurePassword,
             textInputAction: TextInputAction.done,
-            onChanged: _onFieldChanged,
+            // 서버가 거부한 비밀번호는 로컬 검증을 통과해도 에러로 남깁니다.
+            errorText: viewModel.passwordErrorText,
+            onChanged: (value) {
+              viewModel.onPasswordChanged();
+              _onFieldChanged(value);
+            },
             onFieldSubmitted: (_) => _passwordFocusNode.unfocus(),
             trailing: IconButton(
               tooltip: _obscurePassword ? '비밀번호 표시' : '비밀번호 숨기기',
@@ -204,6 +241,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             label: '가입하기',
             width: double.infinity,
             height: 52,
+            isLoading: viewModel.isSubmitting, // 제출 중 중복 탭을 막습니다.
             onPressed: _canSubmit(viewModel) ? _submit : null,
           ),
           const SizedBox(height: 16),

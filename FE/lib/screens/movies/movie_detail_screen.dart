@@ -7,6 +7,8 @@ import '../../data/models/tmdb_movie_dto.dart';
 import '../../data/services/tmdb_movie_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
+import '../../view_models/movie_detail_view_model.dart';
+import '../../view_models/sign_up_view_model.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../widgets/rating_dialog.dart';
 import '../../widgets/tmdb_poster_image.dart';
@@ -26,7 +28,7 @@ class MovieDetailScreen extends StatefulWidget {
 
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
   bool _isFavorite = false;
-  double? _myRating;
+  int? _myRating;
   Future<TmdbMovieDto>? _movieFuture;
 
   @override
@@ -60,17 +62,30 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     _showMessage(_isFavorite ? '즐겨찾기에 추가했어요.' : '즐겨찾기에서 삭제했어요.');
   }
 
-  Future<void> _openRatingDialog(int movieId) async {
-    final rating = await showDialog<double>(
+  /// Dialog가 저장까지 마치고 true를 돌려준 뒤에만 성공 Snackbar를 띄웁니다.
+  /// movieId는 이 화면의 MovieDetailViewModel이 이미 갖고 있습니다.
+  Future<void> _openRatingDialog() async {
+    final viewModel = context.read<MovieDetailViewModel>();
+    int? savedScore;
+    final saved = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => RatingDialog(initialRating: _myRating ?? 0),
+      barrierDismissible: false, // 저장 중 바깥 탭으로 닫히는 것도 막습니다.
+      builder: (_) => RatingDialog(
+        initialScore: _myRating ?? 0,
+        onSubmit: (score, comment) async {
+          await viewModel.createRating(score: score, comment: comment);
+          if (viewModel.submitStatus != SubmitStatus.success) {
+            throw StateError(viewModel.submitMessage ?? '저장에 실패했습니다.');
+          }
+          savedScore = score;
+        },
+      ),
     );
 
-    if (rating == null || !mounted) return;
-    // TODO(평점 API): CreateRatingRequest(movieId: movieId, score: rating)로 저장합니다.
-    debugPrint('평점 저장 대상 movieId=$movieId score=$rating');
-    setState(() => _myRating = rating);
-    _showMessage('평점 ${rating.toStringAsFixed(1)}점을 남겼어요.');
+    // 저장 요청과 Snackbar 표시는 다른 비동기 경계라 mounted를 다시 확인합니다.
+    if (!mounted || saved != true) return;
+    setState(() => _myRating = savedScore);
+    _showMessage('평점을 등록했습니다. 마이페이지의 "내가 등록한 평점"에서 확인할 수 있습니다.');
   }
 
   @override
@@ -139,7 +154,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       bottomNavigationBar: DetailActionBar(
         isFavorite: _isFavorite,
         onFavorite: _toggleFavorite,
-        onRate: () => _openRatingDialog(movie.id),
+        // 학습용 회원가입 전에는 평점을 저장할 memberId가 없습니다.
+        onRate: context.read<MovieDetailViewModel?>()?.memberId == null
+            ? null
+            : _openRatingDialog,
       ),
     );
   }
@@ -153,7 +171,7 @@ class MovieInfoSection extends StatelessWidget {
   });
 
   final TmdbMovieDto movie;
-  final double? myRating;
+  final int? myRating;
 
   @override
   Widget build(BuildContext context) {
@@ -191,7 +209,7 @@ class MovieInfoSection extends StatelessWidget {
         if (myRating != null) ...[
           const SizedBox(height: 4),
           Text(
-            '내 평점 ${myRating.toStringAsFixed(1)}',
+            '내 평점 $myRating점',
             style: AppTextStyles.bodySmall.copyWith(color: AppColors.violet),
           ),
         ],
@@ -222,7 +240,9 @@ class DetailActionBar extends StatelessWidget {
 
   final bool isFavorite;
   final VoidCallback onFavorite;
-  final VoidCallback onRate;
+
+  /// null이면 회원가입 전이라 비활성화하고 안내 문구를 보여줍니다.
+  final VoidCallback? onRate;
 
   @override
   Widget build(BuildContext context) {
@@ -260,10 +280,12 @@ class DetailActionBar extends StatelessWidget {
                 child: ElevatedButton.icon(
                   onPressed: onRate,
                   icon: const Icon(Icons.rate_review_outlined),
-                  label: const Text('평점 남기기'),
+                  label: Text(onRate == null ? '가입 후 평점 남기기' : '평점 남기기'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.violet,
                     foregroundColor: AppColors.white,
+                    disabledBackgroundColor: AppColors.gray,
+                    disabledForegroundColor: AppColors.white,
                     elevation: 0,
                     shape: shape,
                   ),
