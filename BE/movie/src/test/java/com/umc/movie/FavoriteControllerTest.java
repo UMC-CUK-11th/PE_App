@@ -7,6 +7,7 @@ import com.umc.movie.dto.FavoriteStatusResponse;
 import com.umc.movie.dto.MovieRecordResponse;
 import com.umc.movie.dto.RatingResponse;
 import com.umc.movie.exception.ApiException;
+import com.umc.movie.exception.ErrorCode;
 import com.umc.movie.jwt.JwtProvider;
 import com.umc.movie.service.FavoriteService;
 import com.umc.movie.service.MovieRecordService;
@@ -33,10 +34,10 @@ import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/** 8주차 즐겨찾기·영화 기록 API (워크북 Postman 시나리오와 실패 표) */
+/** 8주차 즐겨찾기·영화 기록 컨트롤러 슬라이스 테스트(서비스는 Mock). 9주차 통합 테스트는 controller.FavoriteApiTest */
 @WebMvcTest({FavoriteController.class, MovieRecordController.class})
 @Import(JwtProvider.class)
-class FavoriteApiTest {
+class FavoriteControllerTest {
 
     private static final long MEMBER_ID = 1L;
 
@@ -80,7 +81,7 @@ class FavoriteApiTest {
     @Test
     void 같은_영화_중복_등록은_409_FAVORITE409_1_DB_제약_위반도_409() throws Exception {
         given(favoriteService.create(eq(MEMBER_ID), any()))
-                .willThrow(ApiException.conflict("FAVORITE409_1", "이미 이 영화를 즐겨찾기하셨습니다."));
+                .willThrow(new ApiException(ErrorCode.FAVORITE_DUPLICATED));
         mockMvc.perform(post("/favorites").header(HttpHeaders.AUTHORIZATION, token)
                         .contentType(MediaType.APPLICATION_JSON).content(FAVORITE_550))
                 .andExpect(status().isConflict())
@@ -93,7 +94,7 @@ class FavoriteApiTest {
         mockMvc.perform(post("/favorites").header(HttpHeaders.AUTHORIZATION, token)
                         .contentType(MediaType.APPLICATION_JSON).content(FAVORITE_550))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("COMMON4091"));
+                .andExpect(jsonPath("$.code").value("COMMON409"));
     }
 
     @Test
@@ -117,7 +118,7 @@ class FavoriteApiTest {
         mockMvc.perform(post("/favorites").header(HttpHeaders.AUTHORIZATION, token)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"movieId\":0}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("COMMON4001"))
+                .andExpect(jsonPath("$.code").value("COMMON400"))
                 .andExpect(jsonPath("$.message").value("영화 ID는 양수여야 합니다."));
     }
 
@@ -163,7 +164,7 @@ class FavoriteApiTest {
                 .andExpect(jsonPath("$.result").isEmpty());
         then(favoriteService).should().delete(MEMBER_ID, 550L);
 
-        willThrow(ApiException.notFound("FAVORITE404_1", "즐겨찾기한 영화를 찾을 수 없습니다."))
+        willThrow(new ApiException(ErrorCode.FAVORITE_NOT_FOUND))
                 .given(favoriteService).delete(MEMBER_ID, 999L);
         mockMvc.perform(delete("/favorites/999").header(HttpHeaders.AUTHORIZATION, token))
                 .andExpect(status().isNotFound())
@@ -188,7 +189,7 @@ class FavoriteApiTest {
                 .andExpect(jsonPath("$.result.favorite.favoriteId").value(2));
 
         given(movieRecordService.create(eq(MEMBER_ID), any()))
-                .willThrow(ApiException.conflict("RATING409_1", "이미 이 영화에 평점을 남기셨습니다."));
+                .willThrow(new ApiException(ErrorCode.RATING_DUPLICATED));
         mockMvc.perform(post("/movie-records").header(HttpHeaders.AUTHORIZATION, token)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isConflict())

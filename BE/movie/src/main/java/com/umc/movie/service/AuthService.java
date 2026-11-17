@@ -4,10 +4,10 @@ import com.umc.movie.dto.LoginRequest;
 import com.umc.movie.dto.LoginResponse;
 import com.umc.movie.entity.Member;
 import com.umc.movie.exception.ApiException;
+import com.umc.movie.exception.ErrorCode;
 import com.umc.movie.jwt.JwtProvider;
 import com.umc.movie.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,8 +25,7 @@ public class AuthService {
     public LoginResponse login(LoginRequest request) {
         Member member = memberRepository.findByEmail(request.email())
                 .filter(found -> passwordEncoder.matches(request.password(), found.getPassword()))
-                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "AUTH401_1",
-                        "이메일 또는 비밀번호가 올바르지 않습니다."));
+                .orElseThrow(() -> new ApiException(ErrorCode.LOGIN_FAILED));
 
         return new LoginResponse(member.getNickname(), jwtProvider.createAccessToken(member.getMemberId()));
     }

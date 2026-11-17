@@ -6,10 +6,10 @@ import com.umc.movie.dto.FavoriteStatusResponse;
 import com.umc.movie.entity.Favorite;
 import com.umc.movie.entity.Member;
 import com.umc.movie.exception.ApiException;
+import com.umc.movie.exception.ErrorCode;
 import com.umc.movie.repository.FavoriteRepository;
 import com.umc.movie.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,12 +29,10 @@ public class FavoriteService {
     @Transactional
     public FavoriteResponse create(Long memberId, CreateFavoriteRequest request) {
         Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "MEMBER404_1",
-                        "해당 회원을 찾을 수 없습니다."));
+                .orElseThrow(() -> new ApiException(ErrorCode.MEMBER_NOT_FOUND));
 
         if (favoriteRepository.existsByMember_MemberIdAndMovieId(memberId, request.movieId())) {
-            throw new ApiException(HttpStatus.CONFLICT, "FAVORITE409_1",
-                    "이미 이 영화를 즐겨찾기하셨습니다.");
+            throw new ApiException(ErrorCode.FAVORITE_DUPLICATED);
         }
 
         Favorite favorite = Favorite.builder()
@@ -61,8 +59,7 @@ public class FavoriteService {
     @Transactional
     public void delete(Long memberId, Long movieId) {
         Favorite favorite = favoriteRepository.findByMember_MemberIdAndMovieId(memberId, movieId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "FAVORITE404_1",
-                        "즐겨찾기한 영화를 찾을 수 없습니다."));
+                .orElseThrow(() -> new ApiException(ErrorCode.FAVORITE_NOT_FOUND));
         favoriteRepository.delete(favorite);
     }
 }

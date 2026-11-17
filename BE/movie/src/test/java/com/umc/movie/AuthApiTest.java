@@ -4,6 +4,7 @@ import com.umc.movie.controller.AuthController;
 import com.umc.movie.controller.FavoriteController;
 import com.umc.movie.dto.LoginResponse;
 import com.umc.movie.exception.ApiException;
+import com.umc.movie.exception.ErrorCode;
 import com.umc.movie.jwt.JwtProvider;
 import com.umc.movie.service.AuthService;
 import com.umc.movie.service.FavoriteService;
@@ -13,7 +14,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -67,8 +67,7 @@ class AuthApiTest {
 
     @Test
     void 로그인_실패는_401_AUTH401_1() throws Exception {
-        given(authService.login(any())).willThrow(new ApiException(HttpStatus.UNAUTHORIZED, "AUTH401_1",
-                "이메일 또는 비밀번호가 올바르지 않습니다."));
+        given(authService.login(any())).willThrow(new ApiException(ErrorCode.LOGIN_FAILED));
 
         mockMvc.perform(post("/auth/login").contentType(MediaType.APPLICATION_JSON).content(LOGIN))
                 .andExpect(status().isUnauthorized())
@@ -82,6 +81,7 @@ class AuthApiTest {
         mockMvc.perform(get("/favorites"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH401_2"))
+                .andExpect(jsonPath("$.message").value("로그인이 필요한 요청입니다."))
                 .andExpect(jsonPath("$.result").isEmpty());
 
         mockMvc.perform(get("/favorites").header(HttpHeaders.AUTHORIZATION, "Bearer not.a.jwt"))
@@ -97,7 +97,8 @@ class AuthApiTest {
         String expired = new JwtProvider(secret, -60).createAccessToken(1L);
         mockMvc.perform(get("/favorites").header(HttpHeaders.AUTHORIZATION, "Bearer " + expired))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("AUTH401_4"));
+                .andExpect(jsonPath("$.code").value("AUTH401_4"))
+                .andExpect(jsonPath("$.message").value("토큰이 만료되었습니다. 다시 로그인해주세요."));
     }
 
     @Test

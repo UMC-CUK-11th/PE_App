@@ -12,4 +12,7 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
     boolean existsByEmail(String email);
 
     Optional<Member> findByEmail(String email);
+
+    // 내 정보 수정: 다른 회원이 이미 쓰는 닉네임인지(자기 자신 제외)
+    boolean existsByNicknameAndMemberIdNot(String nickname, Long memberId);
 }
