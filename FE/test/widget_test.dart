@@ -10,13 +10,18 @@ import 'package:movielog/data/models/rating_dto.dart';
 import 'package:movielog/data/models/tmdb_genre_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_page.dart';
-import 'package:movielog/data/services/member_check_service.dart';
+import 'package:movielog/data/models/common_response.dart';
+import 'package:movielog/data/models/create_member_request.dart';
+import 'package:movielog/data/models/rating_request.dart';
+import 'package:movielog/data/models/sign_up_models.dart';
 import 'package:movielog/data/services/rating_api_service.dart';
+import 'package:movielog/data/services/sign_up_service.dart';
 import 'package:movielog/data/services/tmdb_movie_service.dart';
 import 'package:movielog/router/app_router.dart';
 import 'package:movielog/screens/movies/genre_filter_sheet.dart';
 import 'package:movielog/screens/sign_up/sign_up_validators.dart';
 import 'package:movielog/theme/app_theme.dart';
+import 'package:movielog/view_models/learning_member_session.dart';
 import 'package:movielog/view_models/movie_list_view_model.dart';
 import 'package:movielog/view_models/my_ratings_view_model.dart';
 import 'package:movielog/view_models/sign_up_view_model.dart';
@@ -129,15 +134,39 @@ class FakeTmdbMovieService extends TmdbMovieService {
   }
 }
 
-/// 워크북 v5 중복 확인 응답을 흉내 냅니다.
-class FakeMemberCheckService extends MemberCheckService {
-  FakeMemberCheckService() : super(Dio());
+/// v6 공통 오류 응답(DioException)을 만듭니다.
+DioException _apiError(int status, String code, String message) {
+  final options = RequestOptions(path: '/v6');
+  return DioException(
+    requestOptions: options,
+    response: Response(
+      requestOptions: options,
+      statusCode: status,
+      data: {
+        'isSuccess': false,
+        'code': code,
+        'message': message,
+        'result': null,
+      },
+    ),
+    type: DioExceptionType.badResponse,
+  );
+}
+
+/// 워크북 v6 중복 확인·회원가입 응답을 흉내 냅니다.
+class FakeSignUpService extends SignUpService {
+  FakeSignUpService() : super(Dio());
 
   final takenNicknames = {'영화광', 'test'};
   final takenEmails = {'test@umc.com', 'movie@umc.com'};
   bool fail = false;
   Completer<void>? gate;
   int calls = 0;
+
+  /// 설정하면 signUp이 이 오류로 실패합니다.
+  DioException? signUpError;
+  Completer<void>? signUpGate;
+  final signUpRequests = <Map<String, dynamic>>[];
 
   @override
   Future<bool> checkNickname(String nickname) async {
@@ -154,29 +183,120 @@ class FakeMemberCheckService extends MemberCheckService {
     if (fail) throw _networkError();
     return !takenEmails.contains(email.trim());
   }
+
+  @override
+  Future<CommonResponse<SignUpResult>> signUp(
+    CreateMemberRequest request,
+  ) async {
+    signUpRequests.add(request.toJson());
+    await signUpGate?.future;
+    final error = signUpError;
+    if (error != null) throw error;
+    return CommonResponse(
+      isSuccess: true,
+      code: 'COMMON201',
+      message: '회원가입에 성공했습니다.',
+      result: SignUpResult(
+        memberId: 42,
+        email: request.email,
+        nickname: request.nickname,
+      ),
+    );
+  }
 }
 
-/// 워크북 v5 유저별 평점 조회 응답을 흉내 냅니다.
+/// 워크북 v6 평점 CRUD를 메모리 목록으로 흉내 냅니다.
 class FakeRatingApiService extends RatingApiService {
-  FakeRatingApiService({this.ratings = const []}) : super(Dio());
+  FakeRatingApiService({List<RatingDto> ratings = const []})
+    : ratings = [...ratings],
+      super(Dio());
 
   List<RatingDto> ratings;
   int? failStatus;
 
+  /// 설정하면 다음 쓰기 요청이 이 오류로 실패합니다.
+  DioException? writeError;
+
+  /// 이 ratingId의 DELETE만 실패시킵니다.
+  final failDeleteIds = <int>{};
+
+  /// true면 쓰기가 성공한 뒤의 GET만 실패합니다.
+  bool failFetchAfterWrite = false;
+  Completer<void>? writeGate;
+
+  int fetchCalls = 0;
+  final created = <Map<String, dynamic>>[];
+  final updated = <({int ratingId, int score, String? comment})>[];
+  final deleted = <int>[];
+
   @override
   Future<List<RatingDto>> fetchMyRatings(int memberId) async {
+    fetchCalls++;
     final status = failStatus;
     if (status != null) {
       throw DioException(
-        requestOptions: RequestOptions(path: '/v5/members/$memberId/ratings'),
+        requestOptions: RequestOptions(path: '/v6/members/$memberId/ratings'),
         response: Response(
-          requestOptions: RequestOptions(path: '/v5/members/$memberId/ratings'),
+          requestOptions: RequestOptions(path: '/v6/members/$memberId/ratings'),
           statusCode: status,
         ),
         type: DioExceptionType.badResponse,
       );
     }
-    return ratings;
+    return [...ratings];
+  }
+
+  Future<void> _write() async {
+    await writeGate?.future;
+    final error = writeError;
+    writeError = null;
+    if (error != null) throw error;
+  }
+
+  void _afterWrite() {
+    if (failFetchAfterWrite) failStatus = 500;
+  }
+
+  @override
+  Future<void> createRating({
+    required int memberId,
+    required CreateRatingRequest request,
+  }) async {
+    await _write();
+    created.add(request.toJson());
+    _afterWrite();
+  }
+
+  @override
+  Future<void> updateRating({
+    required int memberId,
+    required int ratingId,
+    required int score,
+    String? comment,
+  }) async {
+    await _write();
+    updated.add((ratingId: ratingId, score: score, comment: comment));
+    ratings = [
+      for (final r in ratings)
+        r.ratingId == ratingId
+            ? _rating(r.ratingId, r.movieId, score: score, comment: comment)
+            : r,
+    ];
+    _afterWrite();
+  }
+
+  @override
+  Future<void> deleteRating({
+    required int memberId,
+    required int ratingId,
+  }) async {
+    await _write();
+    if (failDeleteIds.contains(ratingId)) {
+      throw _apiError(404, 'COMMON404', '존재하지 않는 평점입니다.');
+    }
+    deleted.add(ratingId);
+    ratings = ratings.where((r) => r.ratingId != ratingId).toList();
+    _afterWrite();
   }
 }
 
@@ -226,8 +346,9 @@ Future<FakeTmdbMovieService> _pumpApp(
   String location = '/start',
   Size size = const Size(390, 844),
   FakeTmdbMovieService? service,
-  FakeMemberCheckService? checkService,
+  FakeSignUpService? checkService,
   FakeRatingApiService? ratingService,
+  LearningMemberSession? session,
   GenrePreference? preference,
   bool settle = true,
 }) async {
@@ -240,8 +361,11 @@ Future<FakeTmdbMovieService> _pumpApp(
     MultiProvider(
       providers: [
         Provider<TmdbMovieService>.value(value: fake),
-        Provider<MemberCheckService>.value(
-          value: checkService ?? FakeMemberCheckService(),
+        ChangeNotifierProvider<LearningMemberSession>.value(
+          value: session ?? LearningMemberSession(),
+        ),
+        Provider<SignUpService>.value(
+          value: checkService ?? FakeSignUpService(),
         ),
         Provider<RatingApiService>.value(
           value: ratingService ?? FakeRatingApiService(),
@@ -263,7 +387,7 @@ Future<FakeTmdbMovieService> _pumpApp(
 Future<void> _fillValidSignUp(WidgetTester tester) async {
   await tester.enterText(_field(0), '무비러버');
   await tester.enterText(_field(1), 'movie@example.com');
-  await tester.enterText(_field(2), 'password1');
+  await tester.enterText(_field(2), 'Password1!');
   await tester.pump();
 }
 
@@ -311,8 +435,15 @@ void main() {
       expect(_isEnabled(tester, _submitButton), isFalse);
     });
 
-    testWidgets('유효한 입력과 약관 동의 후 가입하면 홈으로 이동한다', (tester) async {
-      await _pumpApp(tester, location: '/register');
+    testWidgets('가입 성공 시 memberId를 세션에 저장하고 영화 목록으로 이동한다', (tester) async {
+      final session = LearningMemberSession();
+      final signUp = FakeSignUpService();
+      await _pumpApp(
+        tester,
+        location: '/register',
+        session: session,
+        checkService: signUp,
+      );
 
       await _fillValidSignUp(tester);
       await tester.tap(find.byType(Checkbox));
@@ -330,8 +461,73 @@ void main() {
       await tester.tap(_submitButton);
       await tester.pumpAndSettle();
 
-      expect(find.text(_homeHeadline), findsOneWidget);
-      expect(find.text('회원가입이 완료되었습니다.'), findsOneWidget);
+      expect(signUp.signUpRequests.single, {
+        'email': 'movie@example.com',
+        'password': 'Password1!',
+        'nickname': '무비러버',
+      });
+      expect(session.memberId, 42);
+      expect(find.text('회원가입이 완료되었습니다. (memberId 42)'), findsOneWidget);
+      expect(find.byType(NavigationBar), findsOneWidget);
+    });
+
+    testWidgets('비밀번호 400은 입력칸 에러, 409는 Snackbar로 나눠 보여준다', (tester) async {
+      final signUp = FakeSignUpService();
+      await _pumpApp(tester, location: '/register', checkService: signUp);
+      await _fillValidSignUp(tester);
+      await tester.tap(find.byType(Checkbox));
+      await tester.tap(find.text('중복 확인').at(0));
+      await tester.tap(find.text('중복 확인').at(1));
+      await tester.pumpAndSettle();
+
+      const passwordMessage = '비밀번호는 대문자/소문자/숫자/특수문자를 포함한 8자 이상이어야 합니다.';
+      signUp.signUpError = _apiError(400, 'COMMON400', passwordMessage);
+      await tester.tap(_submitButton);
+      await tester.pumpAndSettle();
+      expect(find.text(passwordMessage), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+
+      // 비밀번호를 고치면 서버 에러가 사라집니다.
+      await tester.enterText(_field(2), 'Password2!');
+      await tester.pump();
+      expect(find.text(passwordMessage), findsNothing);
+
+      signUp.signUpError = _apiError(409, 'COMMON409', '이미 사용 중인 이메일입니다.');
+      await tester.tap(_submitButton);
+      await tester.pumpAndSettle();
+      expect(find.text('이미 사용 중인 이메일입니다.'), findsOneWidget);
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(find.text('회원가입'), findsOneWidget);
+    });
+
+    testWidgets('제출 중에는 가입 버튼이 로딩이고 뒤로가기로 나갈 수 없다', (tester) async {
+      final signUp = FakeSignUpService()..signUpGate = Completer<void>();
+      await _pumpApp(tester, location: '/start', checkService: signUp);
+      await tester.tap(find.text('시작하기'));
+      await tester.pumpAndSettle();
+      await _fillValidSignUp(tester);
+      await tester.tap(find.byType(Checkbox));
+      await tester.tap(find.text('중복 확인').at(0));
+      await tester.tap(find.text('중복 확인').at(1));
+      await tester.pumpAndSettle();
+
+      await tester.tap(_submitButton);
+      await tester.pump();
+      expect(_isEnabled(tester, _submitButton), isFalse);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(find.text('회원가입'), findsOneWidget);
+
+      signUp.signUpError = _apiError(409, 'COMMON409', '이미 사용 중인 닉네임입니다.');
+      signUp.signUpGate!.complete();
+      await tester.pumpAndSettle();
+
+      // 제출이 끝나면 다시 나갈 수 있습니다.
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('회원가입'), findsNothing);
     });
 
     testWidgets('비밀번호 표시 버튼으로 obscureText를 전환한다', (tester) async {
@@ -755,8 +951,24 @@ void main() {
       expect(find.text('즐겨찾기에 추가했어요.'), findsOneWidget);
     });
 
-    testWidgets('평점 Dialog에서 별점을 고르면 확인 버튼이 활성화되고 저장된다', (tester) async {
+    testWidgets('회원가입 전에는 평점 버튼이 비활성화된다', (tester) async {
       await _pumpApp(tester, location: '/movies/1');
+
+      final button = find.ancestor(
+        of: find.text('가입 후 평점 남기기'),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+      );
+      expect(_isEnabled(tester, button), isFalse);
+    });
+
+    testWidgets('정수 별점과 코멘트를 TMDB id와 함께 v6로 등록한다', (tester) async {
+      final ratings = FakeRatingApiService();
+      await _pumpApp(
+        tester,
+        location: '/movies/1',
+        ratingService: ratings,
+        session: LearningMemberSession()..setMemberId(42),
+      );
 
       await tester.tap(find.text('평점 남기기'));
       await tester.pumpAndSettle();
@@ -775,15 +987,64 @@ void main() {
       expect(_isEnabled(tester, confirm), isTrue);
       expect(find.text('다시 선택하기'), findsOneWidget);
 
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.byType(TextField),
+        ),
+        '  재밌어요  ',
+      );
       await tester.tap(confirm);
       await tester.pumpAndSettle();
 
       expect(find.byType(Dialog), findsNothing);
-      expect(find.text('내 평점 3.0'), findsOneWidget);
+      expect(ratings.created.single, {
+        'movieId': 1,
+        'score': 3,
+        'comment': '재밌어요',
+      });
+      expect(find.text('내 평점 3점'), findsOneWidget);
+      expect(find.textContaining('평점을 등록했습니다.'), findsOneWidget);
+    });
+
+    testWidgets('등록 409면 Dialog를 유지하고 서버 문구를 보여준다', (tester) async {
+      final ratings = FakeRatingApiService()
+        ..writeError = _apiError(409, 'COMMON409', '이미 이 영화에 평점을 남기셨습니다.');
+      await _pumpApp(
+        tester,
+        location: '/movies/1',
+        ratingService: ratings,
+        session: LearningMemberSession()..setMemberId(42),
+      );
+
+      await tester.tap(find.text('평점 남기기'));
+      await tester.pumpAndSettle();
+      final star = find
+          .descendant(
+            of: find.byType(Dialog),
+            matching: find.byIcon(Icons.star),
+          )
+          .at(4);
+      await tester.tapAt(tester.getCenter(star) + const Offset(10, 0));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(ElevatedButton, '확인'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.text('이미 이 영화에 평점을 남기셨습니다.'), findsOneWidget);
+      // 실패 후 로딩이 풀려 다시 시도할 수 있습니다.
+      expect(
+        _isEnabled(tester, find.widgetWithText(ElevatedButton, '확인')),
+        isTrue,
+      );
     });
 
     testWidgets('다시 선택하기를 누르면 평점이 초기화된다', (tester) async {
-      await _pumpApp(tester, location: '/movies/1');
+      await _pumpApp(
+        tester,
+        location: '/movies/1',
+        session: LearningMemberSession()..setMemberId(42),
+      );
 
       await tester.tap(find.text('평점 남기기'));
       await tester.pumpAndSettle();
@@ -812,7 +1073,7 @@ void main() {
 
   group('6주차 회원가입 중복 확인', () {
     test('중복 응답이면 버튼을 막고, 다른 값으로 바꾸면 다시 확인할 수 있다', () async {
-      final service = FakeMemberCheckService();
+      final service = FakeSignUpService();
       final viewModel = SignUpViewModel(service);
 
       viewModel.onNicknameChanged('영화광');
@@ -828,7 +1089,7 @@ void main() {
     });
 
     test('중복이던 문자열을 다시 입력하면 서버에 묻지 않고 바로 에러가 된다', () async {
-      final service = FakeMemberCheckService();
+      final service = FakeSignUpService();
       final viewModel = SignUpViewModel(service);
 
       viewModel.onNicknameChanged('영화광');
@@ -842,7 +1103,7 @@ void main() {
     });
 
     test('확인 중에 입력이 바뀌면 늦게 온 응답을 버린다', () async {
-      final service = FakeMemberCheckService()..gate = Completer<void>();
+      final service = FakeSignUpService()..gate = Completer<void>();
       final viewModel = SignUpViewModel(service);
 
       viewModel.onEmailChanged('new@umc.com');
@@ -856,7 +1117,7 @@ void main() {
     });
 
     test('통신 실패는 중복과 다른 문구로 error 상태가 된다', () async {
-      final viewModel = SignUpViewModel(FakeMemberCheckService()..fail = true);
+      final viewModel = SignUpViewModel(FakeSignUpService()..fail = true);
 
       viewModel.onEmailChanged('new@umc.com');
       await viewModel.checkEmail('new@umc.com');
@@ -867,7 +1128,7 @@ void main() {
     });
 
     testWidgets('통신 중에는 버튼이 비활성화되고 인디케이터만 보인다', (tester) async {
-      final service = FakeMemberCheckService()..gate = Completer<void>();
+      final service = FakeSignUpService()..gate = Completer<void>();
       await _pumpApp(tester, location: '/register', checkService: service);
 
       await tester.enterText(_field(0), '새닉네임');
@@ -954,7 +1215,7 @@ void main() {
       final viewModel = MyRatingsViewModel(
         FakeRatingApiService(ratings: [_rating(2, 1), _rating(1, 999)]),
         _defaultService(),
-        sampleMemberId,
+        1,
       );
 
       await viewModel.load();
@@ -970,7 +1231,7 @@ void main() {
       final viewModel = MyRatingsViewModel(
         FakeRatingApiService(ratings: [_rating(1, 1)]),
         tmdb,
-        sampleMemberId,
+        1,
       );
 
       await viewModel.load();
@@ -983,7 +1244,7 @@ void main() {
       final empty = MyRatingsViewModel(
         FakeRatingApiService(),
         _defaultService(),
-        sampleMemberId,
+        1,
       );
       await empty.load();
       expect(empty.status, MyRatingsLoadStatus.empty);
@@ -991,7 +1252,7 @@ void main() {
       final notFound = MyRatingsViewModel(
         FakeRatingApiService()..failStatus = 404,
         _defaultService(),
-        sampleMemberId,
+        1,
       );
       await notFound.load();
       expect(notFound.status, MyRatingsLoadStatus.error);
@@ -1000,7 +1261,7 @@ void main() {
       final badRequest = MyRatingsViewModel(
         FakeRatingApiService()..failStatus = 400,
         _defaultService(),
-        sampleMemberId,
+        1,
       );
       await badRequest.load();
       expect(badRequest.message, 'memberId 형식을 다시 확인해 주세요.');
@@ -1011,6 +1272,7 @@ void main() {
         tester,
         location: '/my',
         size: const Size(390, 1600),
+        session: LearningMemberSession()..setMemberId(1),
         ratingService: FakeRatingApiService(
           ratings: [
             _rating(2, 1, comment: '다시 봐도 좋다'),
@@ -1030,6 +1292,219 @@ void main() {
       await tester.tap(find.byIcon(Icons.arrow_back));
       await tester.pumpAndSettle();
       expect(find.byType(NavigationBar), findsOneWidget);
+    });
+  });
+
+  group('7주차 요청 Model', () {
+    test('정수 1~5만 허용하고 빈 코멘트는 body에서 뺀다', () {
+      expect(validateServerScore(3), 3);
+      expect(() => validateServerScore(3.5), throwsArgumentError);
+      expect(() => validateServerScore(0), throwsArgumentError);
+
+      expect(
+        const CreateRatingRequest(
+          movieId: 550,
+          score: 4,
+          comment: '  ',
+        ).toJson(),
+        {'movieId': 550, 'score': 4},
+      );
+    });
+
+    test('v6 오류 body를 공통 응답으로 읽고 code로 재조회 여부를 정한다', () {
+      final forbidden = _apiError(
+        403,
+        'COMMON403',
+        '본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.',
+      );
+      expect(writeErrorMessage(forbidden), '본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.');
+      expect(shouldRefreshAfterRatingError(forbidden), isTrue);
+
+      final conflict = _apiError(409, 'COMMON409', '이미 이 영화에 평점을 남기셨습니다.');
+      expect(shouldRefreshAfterRatingError(conflict), isFalse);
+      expect(writeErrorMessage(_networkError()), contains('잠시 후 다시 시도'));
+    });
+  });
+
+  group('7주차 내가 등록한 평점 수정·삭제', () {
+    MyRatingsViewModel viewModelWith(FakeRatingApiService service) =>
+        MyRatingsViewModel(service, _defaultService(), 42);
+
+    test('수정은 comment까지 보내고 성공 뒤 목록을 다시 읽는다', () async {
+      final service = FakeRatingApiService(ratings: [_rating(1, 1)]);
+      final viewModel = viewModelWith(service);
+      await viewModel.load();
+
+      await viewModel.updateRating(ratingId: 1, score: 2, comment: null);
+
+      expect(service.updated.single, (ratingId: 1, score: 2, comment: null));
+      expect(service.fetchCalls, 2);
+      expect(viewModel.ratings.single.rating.score, 2);
+      expect(viewModel.refreshWarning, isNull);
+    });
+
+    test('403 쓰기 실패는 다시 던지고 목록을 서버와 맞춘다', () async {
+      final service = FakeRatingApiService(ratings: [_rating(1, 1)])
+        ..writeError = _apiError(
+          403,
+          'COMMON403',
+          '본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.',
+        );
+      final viewModel = viewModelWith(service);
+      await viewModel.load();
+
+      await expectLater(
+        viewModel.updateRating(ratingId: 1, score: 5),
+        throwsA(isA<DioException>()),
+      );
+      expect(service.fetchCalls, 2);
+    });
+
+    test('저장 성공 뒤 GET만 실패하면 실패로 던지지 않고 재조회 안내를 남긴다', () async {
+      final service = FakeRatingApiService(ratings: [_rating(1, 1)])
+        ..failFetchAfterWrite = true;
+      final viewModel = viewModelWith(service);
+      await viewModel.load();
+
+      await viewModel.deleteRating(1);
+
+      expect(service.deleted, [1]);
+      expect(viewModel.status, MyRatingsLoadStatus.error);
+      expect(viewModel.refreshWarning, contains('저장은 완료됐지만'));
+
+      service.failStatus = null;
+      await viewModel.retryLoad();
+      expect(viewModel.status, MyRatingsLoadStatus.empty);
+      expect(viewModel.refreshWarning, isNull);
+      expect(service.deleted, [1]); // DELETE를 다시 보내지 않습니다.
+    });
+
+    test('다중 삭제 중 일부만 실패하면 실패한 항목만 선택에 남긴다', () async {
+      final service = FakeRatingApiService(
+        ratings: [_rating(3, 1), _rating(2, 2), _rating(1, 1)],
+      )..failDeleteIds.add(2);
+      final viewModel = viewModelWith(service);
+      await viewModel.load();
+
+      viewModel.startEditing();
+      viewModel.toggleSelected(3);
+      viewModel.toggleSelected(2);
+      await viewModel.deleteSelectedRatings();
+
+      expect(service.deleted, [3]);
+      expect(viewModel.selectedRatingIds, {2});
+      expect(viewModel.isEditing, isTrue);
+      expect(viewModel.isDeletingSelected, isFalse);
+      expect(viewModel.message, contains('1개 항목을 삭제하지 못했습니다'));
+      expect(viewModel.ratings.map((e) => e.rating.ratingId), [2, 1]);
+    });
+  });
+
+  group('7주차 내가 등록한 평점 화면', () {
+    Future<FakeRatingApiService> pumpMyRatings(
+      WidgetTester tester,
+      List<RatingDto> ratings,
+    ) async {
+      final service = FakeRatingApiService(ratings: ratings);
+      await _pumpApp(
+        tester,
+        location: '/my/ratings',
+        size: const Size(390, 1600),
+        session: LearningMemberSession()..setMemberId(42),
+        ratingService: service,
+      );
+      return service;
+    }
+
+    testWidgets('회원가입 전에는 학습용 회원가입 안내를 보여준다', (tester) async {
+      await _pumpApp(tester, location: '/my/ratings');
+
+      expect(find.text('학습용 회원가입이 필요합니다.'), findsOneWidget);
+    });
+
+    testWidgets('수정 버튼은 기존 별점·코멘트를 채운 Dialog를 열고 저장 뒤 재조회한다', (tester) async {
+      final service = await pumpMyRatings(tester, [
+        _rating(1, 1, comment: '처음 감상', score: 2),
+      ]);
+
+      await tester.tap(find.byTooltip('수정'));
+      await tester.pumpAndSettle();
+
+      final field = find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byType(TextField),
+      );
+      expect(tester.widget<TextField>(field).controller!.text, '처음 감상');
+      expect(
+        _isEnabled(tester, find.widgetWithText(ElevatedButton, '확인')),
+        isTrue,
+      );
+
+      await tester.enterText(field, '다시 보니 좋다');
+      await tester.tap(find.widgetWithText(ElevatedButton, '확인'));
+      await tester.pumpAndSettle();
+
+      expect(service.updated.single.comment, '다시 보니 좋다');
+      expect(service.updated.single.score, 2);
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.text('다시 보니 좋다'), findsOneWidget);
+    });
+
+    testWidgets('삭제는 확인 Dialog에서 취소하면 요청하지 않고, 삭제하면 Empty가 된다', (tester) async {
+      final service = await pumpMyRatings(tester, [_rating(1, 1)]);
+
+      await tester.tap(find.byTooltip('삭제'));
+      await tester.pumpAndSettle();
+      expect(find.text('평점을 삭제할까요?'), findsOneWidget);
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+      expect(service.deleted, isEmpty);
+
+      await tester.tap(find.byTooltip('삭제'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, '삭제'));
+      await tester.pumpAndSettle();
+
+      expect(service.deleted, [1]);
+      expect(find.text('아직 등록한 평점이 없어요.'), findsOneWidget);
+    });
+
+    testWidgets('편집 모드에서 선택한 평점을 오버레이와 함께 한 번에 삭제한다', (tester) async {
+      final service = await pumpMyRatings(tester, [
+        _rating(2, 1, comment: '둘'),
+        _rating(1, 2, comment: '하나'),
+      ]);
+
+      await tester.tap(find.text('편집'));
+      await tester.pumpAndSettle();
+      expect(find.text('0개 선택'), findsOneWidget);
+      expect(find.byTooltip('수정'), findsNothing);
+      final deleteSelected = find.widgetWithText(ElevatedButton, '선택한 0개 삭제');
+      expect(_isEnabled(tester, deleteSelected), isFalse);
+
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.tap(find.byType(Checkbox).last);
+      await tester.pump();
+      expect(find.text('2개 선택'), findsOneWidget);
+
+      service.writeGate = Completer<void>();
+      await tester.tap(find.widgetWithText(ElevatedButton, '선택한 2개 삭제'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, '삭제'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // 확인 Dialog는 바로 닫히고 화면 오버레이가 삭제를 이어받습니다.
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(ModalBarrier), findsWidgets);
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(find.text('내가 등록한 평점'), findsOneWidget);
+
+      service.writeGate!.complete();
+      await tester.pumpAndSettle();
+      expect(service.deleted, [2, 1]);
+      expect(find.text('아직 등록한 평점이 없어요.'), findsOneWidget);
     });
   });
 }
