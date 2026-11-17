@@ -24,9 +24,11 @@ class AuthViewModel extends ChangeNotifier {
   bool sessionExpired = false;
   int _sessionVersion = 0;
   bool _disposed = false;
+  bool _tokenDeletionPending = false;
 
   bool get isSignedIn => status == AuthStatus.signedIn;
   bool get isSigningIn => status == AuthStatus.signingIn;
+  bool get tokenDeletionPending => _tokenDeletionPending;
 
   Future<void> restoreSession() async {
     final version = ++_sessionVersion;
@@ -80,7 +82,11 @@ class AuthViewModel extends ChangeNotifier {
         throw const FormatException('로그인 응답에 accessToken이 없습니다.');
       }
       await _tokenStorage.write(token);
-      if (version != _sessionVersion) return false;
+      if (version != _sessionVersion) {
+        await _deleteStoredTokenIfMatches(token);
+        return false;
+      }
+      _tokenDeletionPending = false;
       _session.setAccessToken(token);
       member = null;
       memberStatus = MemberLoadStatus.idle;
@@ -106,8 +112,13 @@ class AuthViewModel extends ChangeNotifier {
     required String accessToken,
     int? memberId,
   }) async {
-    _sessionVersion++;
+    final version = ++_sessionVersion;
     await _tokenStorage.write(accessToken);
+    if (version != _sessionVersion) {
+      await _deleteStoredTokenIfMatches(accessToken);
+      return;
+    }
+    _tokenDeletionPending = false;
     _session
       ..setAccessToken(accessToken)
       ..setMemberId(memberId);
@@ -172,6 +183,25 @@ class AuthViewModel extends ChangeNotifier {
 
   Future<void> logout() => _clearCurrentSession();
 
+  void clearMessage() {
+    if (message == null) return;
+    message = null;
+    _notify();
+  }
+
+  Future<bool> retryTokenDeletion() async {
+    try {
+      await _tokenStorage.delete();
+      _tokenDeletionPending = false;
+      return true;
+    } on Object {
+      _tokenDeletionPending = true;
+      return false;
+    } finally {
+      _notify();
+    }
+  }
+
   void consumeSessionExpired() {
     if (!sessionExpired) return;
     sessionExpired = false;
@@ -180,13 +210,29 @@ class AuthViewModel extends ChangeNotifier {
 
   Future<void> _clearCurrentSession({bool expired = false}) async {
     _sessionVersion++;
-    await _tokenStorage.delete();
     _session.clear();
     member = null;
     memberStatus = MemberLoadStatus.idle;
     status = AuthStatus.signedOut;
     sessionExpired = expired;
+    message = null;
+    try {
+      await _tokenStorage.delete();
+      _tokenDeletionPending = false;
+    } on Object {
+      _tokenDeletionPending = true;
+    }
     _notify();
+  }
+
+  Future<void> _deleteStoredTokenIfMatches(String token) async {
+    try {
+      if (await _tokenStorage.read() == token) {
+        await _tokenStorage.delete();
+      }
+    } on Object {
+      _tokenDeletionPending = true;
+    }
   }
 
   bool _isSessionError(String? code) {

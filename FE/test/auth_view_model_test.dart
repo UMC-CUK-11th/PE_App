@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/data/services/learning_member_session.dart';
@@ -104,6 +106,60 @@ void main() {
     expect(await storage.read(), 'new-token');
     expect(paths, ['/v7/auth/login']);
   });
+
+  test('로그인 저장 중 로그아웃되면 이전 토큰을 제거하고 signedOut을 유지한다', () async {
+    final storage = _DeferredWriteTokenStorage();
+    final session = LearningMemberSession();
+    final service = MemberApiService(
+      _dio(
+        (_) => {
+          'isSuccess': true,
+          'code': 'COMMON200',
+          'message': '로그인에 성공했습니다.',
+          'result': {'accessToken': 'stale-token'},
+        },
+      ),
+      authSession: session,
+    );
+    final viewModel = AuthViewModel(service, session, storage);
+
+    final login = viewModel.login(
+      email: 'movie@example.com',
+      password: 'Password1!',
+    );
+    await Future<void>.delayed(Duration.zero);
+    await viewModel.logout();
+    storage.allowWrite.complete();
+
+    expect(await login, isFalse);
+    expect(viewModel.status, AuthStatus.signedOut);
+    expect(await storage.read(), isNull);
+    expect(session.accessToken, isNull);
+  });
+
+  test('토큰 삭제가 실패해도 메모리 세션과 로그아웃 상태는 정리한다', () async {
+    final storage = _DeleteFailingTokenStorage('saved-token');
+    final session = LearningMemberSession(
+      initialMemberId: 7,
+      initialAccessToken: 'saved-token',
+    );
+    final viewModel =
+        AuthViewModel(
+            MemberApiService(Dio(), authSession: session),
+            session,
+            storage,
+          )
+          ..status = AuthStatus.signedIn
+          ..memberStatus = MemberLoadStatus.success;
+
+    await viewModel.logout();
+
+    expect(viewModel.status, AuthStatus.signedOut);
+    expect(session.accessToken, isNull);
+    expect(session.memberId, isNull);
+    expect(viewModel.tokenDeletionPending, isTrue);
+    expect(await viewModel.retryTokenDeletion(), isFalse);
+  });
 }
 
 Map<String, dynamic> _memberResponse() => {
@@ -138,4 +194,36 @@ Dio _dio(Object? Function(RequestOptions options) responseBuilder) {
     ),
   );
   return dio;
+}
+
+class _DeferredWriteTokenStorage implements TokenStorage {
+  final allowWrite = Completer<void>();
+  String? _token;
+
+  @override
+  Future<void> write(String token) async {
+    await allowWrite.future;
+    _token = token;
+  }
+
+  @override
+  Future<String?> read() async => _token;
+
+  @override
+  Future<void> delete() async => _token = null;
+}
+
+class _DeleteFailingTokenStorage implements TokenStorage {
+  _DeleteFailingTokenStorage(this._token);
+
+  String? _token;
+
+  @override
+  Future<void> write(String token) async => _token = token;
+
+  @override
+  Future<String?> read() async => _token;
+
+  @override
+  Future<void> delete() async => throw StateError('keychain unavailable');
 }

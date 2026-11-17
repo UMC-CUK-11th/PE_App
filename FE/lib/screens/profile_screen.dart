@@ -40,6 +40,7 @@ class ProfileScreen extends StatelessWidget {
       );
     }
     final isMemberReady = auth.memberStatus == MemberLoadStatus.success;
+    final isAuthenticated = auth.status == AuthStatus.signedIn;
     return Scaffold(
       appBar: CommonAppBar(
         title: '내 프로필',
@@ -47,7 +48,7 @@ class ProfileScreen extends StatelessWidget {
         titleStyle: isMemberReady
             ? AppTextStyles.profileTitle
             : AppTextStyles.signUpAppBarTitle.copyWith(fontSize: 20),
-        actions: isMemberReady
+        actions: isAuthenticated
             ? [TextButton(onPressed: auth.logout, child: const Text('로그아웃'))]
             : null,
       ),

@@ -126,6 +126,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _emailController,
                   enabled: !auth.isSigningIn,
                   keyboardType: TextInputType.emailAddress,
+                  onChanged: (_) => auth.clearMessage(),
                   validator: (value) {
                     final email = value?.trim() ?? '';
                     if (email.isEmpty) return '이메일을 입력해주세요.';
@@ -140,6 +141,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _passwordController,
                   enabled: !auth.isSigningIn,
                   obscureText: _obscurePassword,
+                  errorText: auth.message,
+                  onChanged: (_) => auth.clearMessage(),
                   suffixIcon: IconButton(
                     onPressed: auth.isSigningIn
                         ? null
@@ -154,7 +157,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   validator: (value) {
                     if ((value ?? '').isEmpty) return '비밀번호를 입력해주세요.';
-                    if (auth.message != null) return auth.message;
                     return null;
                   },
                 ),

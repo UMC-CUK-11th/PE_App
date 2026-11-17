@@ -106,34 +106,31 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         appBar: CommonAppBar(title: '프로필 수정', centerTitle: true, onBack: _back),
         body: SafeArea(
           top: false,
-          child: Padding(
+          child: ListView(
             padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                MovieLogTextFormField(
-                  label: '이메일 (변경할 수 없습니다)',
-                  controller: _emailController,
-                  enabled: false,
-                ),
-                const SizedBox(height: 24),
-                MovieLogTextFormField(
-                  label: '닉네임',
-                  hintText: '닉네임을 입력해주세요',
-                  controller: _nicknameController,
-                  enabled: !_viewModel.isSaving,
-                  maxLength: 12,
-                  errorText: _viewModel.fieldError,
-                  onChanged: (_) => _viewModel.clearError(),
-                ),
-                const Spacer(),
-                AppButton(
-                  label: '저장',
-                  isLoading: _viewModel.isSaving,
-                  onPressed: _viewModel.isSaving ? null : _save,
-                ),
-              ],
-            ),
+            children: [
+              MovieLogTextFormField(
+                label: '이메일 (변경할 수 없습니다)',
+                controller: _emailController,
+                enabled: false,
+              ),
+              const SizedBox(height: 24),
+              MovieLogTextFormField(
+                label: '닉네임',
+                hintText: '닉네임을 입력해주세요',
+                controller: _nicknameController,
+                enabled: !_viewModel.isSaving,
+                maxLength: 12,
+                errorText: _viewModel.fieldError,
+                onChanged: (_) => _viewModel.clearError(),
+              ),
+              const SizedBox(height: 48),
+              AppButton(
+                label: '저장',
+                isLoading: _viewModel.isSaving,
+                onPressed: _viewModel.isSaving ? null : _save,
+              ),
+            ],
           ),
         ),
       ),

@@ -29,6 +29,9 @@ public class WebConfig implements WebMvcConfigurer {
                         "/members/me",
                         "/members/me/**",
                         "/ratings/**",
+                        "/v7/members/me",
+                        "/v7/members/me/**",
+                        "/v7/ratings/**",
                         "/favorites",
                         "/favorites/**",
                         "/movie-records"
