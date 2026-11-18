@@ -10,14 +10,19 @@ import 'services/tmdb_movie_service.dart';
 import 'services/movie_log_client.dart';
 import 'services/member_check_service.dart';
 import 'services/rating_api_service.dart';
+import 'services/auth_api_service.dart';
+import 'services/token_storage.dart';
+import 'view_models/auth_session.dart';
 import 'view_models/learning_member_session.dart';
 
-class MovieLogApp extends StatelessWidget {
+class MovieLogApp extends StatefulWidget {
   const MovieLogApp({
     this.router,
     this.learningSession,
     this.memberCheckService,
     this.ratingApiService,
+    this.workbookClient,
+    this.tokenStorage = const TokenStorage(),
     super.key,
   });
   final MemberCheckService? memberCheckService;
@@ -25,28 +30,67 @@ class MovieLogApp extends StatelessWidget {
 
   final GoRouter? router;
   final LearningMemberSession? learningSession;
+  final Dio? workbookClient;
+  final TokenStorage tokenStorage;
+
+  @override
+  State<MovieLogApp> createState() => _MovieLogAppState();
+}
+
+class _MovieLogAppState extends State<MovieLogApp> {
+  late final Dio _workbook = widget.workbookClient ?? createMovieLogClient();
+  late final AuthSession? _session;
+  late final GoRouter _router;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.router case final router?) {
+      _session = null;
+      _router = router;
+    } else {
+      final session = AuthSession(
+        AuthApiService(_workbook),
+        widget.tokenStorage,
+      );
+      _session = session;
+      attachMovieLogAuth(_workbook, session);
+      _router = AppRouter.createRouter(
+        initialLocation: '/splash',
+        session: session,
+      );
+      session.restore();
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_session != null) _router.dispose();
+    _session?.dispose();
+    if (widget.workbookClient == null) _workbook.close(force: true);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        if (learningSession case final session?)
+        if (_session case final session?)
+          ChangeNotifierProvider.value(value: session),
+        if (widget.learningSession case final session?)
           ChangeNotifierProvider.value(value: session)
         else
           ChangeNotifierProvider(create: (_) => LearningMemberSession()),
-        Provider<_WorkbookClient>(
-          create: (_) => _WorkbookClient(),
-          dispose: (_, client) => client.dio.close(force: true),
-        ),
         Provider<MemberCheckService>(
-          create: (context) =>
-              memberCheckService ??
-              MemberCheckService(context.read<_WorkbookClient>().dio),
+          create: (_) =>
+              widget.memberCheckService ??
+              MemberCheckService(
+                _workbook,
+                version: _session == null ? 'v6' : 'v7',
+              ),
         ),
         Provider<RatingApiService>(
-          create: (context) =>
-              ratingApiService ??
-              RatingApiService(context.read<_WorkbookClient>().dio),
+          create: (_) => widget.ratingApiService ?? RatingApiService(_workbook),
         ),
         Provider<Dio>(
           create: (_) => createTmdbClient(),
@@ -60,12 +104,8 @@ class MovieLogApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         title: 'MovieLog',
         theme: AppTheme.light,
-        routerConfig: router ?? AppRouter.router,
+        routerConfig: _router,
       ),
     );
   }
-}
-
-class _WorkbookClient {
-  final Dio dio = createMovieLogClient();
 }

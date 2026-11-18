@@ -18,6 +18,54 @@ class RatingApiService {
 
   String _path(int memberId) => '/v6/members/$memberId/ratings';
 
+  Future<List<RatingDto>> fetchPublicRatings(int memberId) async {
+    final response = await _dio.get<List<dynamic>>(
+      '/v7/members/$memberId/ratings',
+    );
+    return response.data!
+        .map((item) => RatingDto.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<RatingDto> createForSession(CreateRatingRequest request) async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/v7/ratings',
+      data: request.toJson(),
+    );
+    return _readRating(response, 201);
+  }
+
+  Future<RatingDto> updateForSession(
+    int ratingId,
+    UpdateRatingRequest request,
+  ) async {
+    final response = await _dio.patch<Map<String, dynamic>>(
+      '/v7/ratings/$ratingId',
+      data: request.toJson(),
+    );
+    return _readRating(response, 200);
+  }
+
+  Future<void> deleteForSession(int ratingId) async {
+    final response = await _dio.delete<Map<String, dynamic>>(
+      '/v7/ratings/$ratingId',
+    );
+    _confirmWrite(response, 200);
+  }
+
+  RatingDto _readRating(Response<Map<String, dynamic>> response, int status) {
+    final body = response.data;
+    if (body == null || response.statusCode != status) {
+      throw const FormatException('Unexpected rating response');
+    }
+    final result = CommonResponse<RatingDto>.fromJson(
+      body,
+      (data) => RatingDto.fromJson(data as Map<String, dynamic>),
+    ).result;
+    if (result == null) throw const FormatException('Missing rating response');
+    return result;
+  }
+
   Future<void> create(int memberId, CreateRatingRequest request) async {
     final response = await _dio.post<Map<String, dynamic>>(
       _path(memberId),
