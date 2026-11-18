@@ -1,3 +1,5 @@
 package com.umc.movie.dto;
 
-public record EmailCheckResponse(boolean available) {}
+import io.swagger.v3.oas.annotations.media.Schema;
+
+public record EmailCheckResponse(@Schema(description = "사용 가능하면 true", example = "true") boolean available) {}

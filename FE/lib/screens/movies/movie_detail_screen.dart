@@ -7,9 +7,11 @@ import '../../data/models/tmdb_movie_dto.dart';
 import '../../data/services/tmdb_movie_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
+import '../../view_models/favorite_detail_view_model.dart';
 import '../../view_models/movie_detail_view_model.dart';
 import '../../view_models/sign_up_view_model.dart';
 import '../../widgets/common_app_bar.dart';
+import '../../widgets/favorite_button.dart';
 import '../../widgets/rating_dialog.dart';
 import '../../widgets/tmdb_poster_image.dart';
 
@@ -27,7 +29,6 @@ class MovieDetailScreen extends StatefulWidget {
 }
 
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
-  bool _isFavorite = false;
   int? _myRating;
   Future<TmdbMovieDto>? _movieFuture;
 
@@ -39,6 +40,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       _movieFuture = context.read<TmdbMovieService>().fetchMovieDetail(movieId)
         ..ignore();
     }
+    // build에서 조회하지 않고, 화면이 처음 만들어질 때 서버 즐겨찾기 여부를 한 번 확인합니다.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<FavoriteDetailViewModel?>()?.load();
+    });
   }
 
   void _goBack() {
@@ -57,35 +62,41 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       );
   }
 
-  void _toggleFavorite() {
-    setState(() => _isFavorite = !_isFavorite);
-    _showMessage(_isFavorite ? '즐겨찾기에 추가했어요.' : '즐겨찾기에서 삭제했어요.');
-  }
-
   /// Dialog가 저장까지 마치고 true를 돌려준 뒤에만 성공 Snackbar를 띄웁니다.
   /// movieId는 이 화면의 MovieDetailViewModel이 이미 갖고 있습니다.
   Future<void> _openRatingDialog() async {
     final viewModel = context.read<MovieDetailViewModel>();
-    int? savedScore;
+    final favorite = context.read<FavoriteDetailViewModel?>();
     final saved = await showDialog<bool>(
       context: context,
       barrierDismissible: false, // 저장 중 바깥 탭으로 닫히는 것도 막습니다.
       builder: (_) => RatingDialog(
         initialScore: _myRating ?? 0,
-        onSubmit: (score, comment) async {
-          await viewModel.createRating(score: score, comment: comment);
-          if (viewModel.submitStatus != SubmitStatus.success) {
-            throw StateError(viewModel.submitMessage ?? '저장에 실패했습니다.');
-          }
-          savedScore = score;
+        // 여부를 확인했고 아직 즐겨찾기하지 않은 영화일 때만 통합 저장을 제안합니다.
+        showAddToFavorite:
+            favorite != null &&
+            favorite.hasLoadedStatus &&
+            !favorite.isFavorite,
+        onSubmit: (score, comment, addToFavorites) async {
+          await viewModel.createRating(
+            score: score,
+            comment: comment,
+            addToFavorites: addToFavorites,
+          );
+          if (viewModel.submitStatus == SubmitStatus.success) return;
+          final message = viewModel.submitMessage ?? '저장에 실패했습니다.';
+          if (viewModel.closeDialog) throw CloseRatingDialog(message);
+          throw StateError(message);
         },
       ),
     );
 
     // 저장 요청과 Snackbar 표시는 다른 비동기 경계라 mounted를 다시 확인합니다.
     if (!mounted || saved != true) return;
-    setState(() => _myRating = savedScore);
-    _showMessage('평점을 등록했습니다. 마이페이지의 "내가 등록한 평점"에서 확인할 수 있습니다.');
+    // 등록 result의 Rating 객체로 화면을 갱신하고, 북마크는 서버 값으로 다시 맞춥니다.
+    setState(() => _myRating = viewModel.savedRating?.score);
+    favorite?.load();
+    _showMessage('평점을 저장했습니다.');
   }
 
   @override
@@ -151,14 +162,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: DetailActionBar(
-        isFavorite: _isFavorite,
-        onFavorite: _toggleFavorite,
-        // 학습용 회원가입 전에는 평점을 저장할 memberId가 없습니다.
-        onRate: context.read<MovieDetailViewModel?>()?.memberId == null
-            ? null
-            : _openRatingDialog,
-      ),
+      bottomNavigationBar: DetailActionBar(onRate: _openRatingDialog),
     );
   }
 }
@@ -181,11 +185,26 @@ class MovieInfoSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(movie.title, style: AppTextStyles.titleLarge),
-        if (year != null) ...[
-          const SizedBox(height: 4),
-          Text(year, style: AppTextStyles.bodySmall),
-        ],
+        // 제목·연도 오른쪽에 서버 즐겨찾기 상태를 보여주는 북마크를 둡니다.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(movie.title, style: AppTextStyles.titleLarge),
+                  if (year != null) ...[
+                    const SizedBox(height: 4),
+                    Text(year, style: AppTextStyles.bodySmall),
+                  ],
+                ],
+              ),
+            ),
+            if (context.read<FavoriteDetailViewModel?>() != null)
+              const FavoriteButton(),
+          ],
+        ),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -230,69 +249,34 @@ class MovieInfoSection extends StatelessWidget {
   }
 }
 
+/// 3주차 mock 즐겨찾기 버튼은 제목 옆 FavoriteButton으로 옮기고, 평점 버튼만 전체 너비로 둡니다.
 class DetailActionBar extends StatelessWidget {
-  const DetailActionBar({
-    super.key,
-    required this.isFavorite,
-    required this.onFavorite,
-    required this.onRate,
-  });
+  const DetailActionBar({super.key, required this.onRate});
 
-  final bool isFavorite;
-  final VoidCallback onFavorite;
-
-  /// null이면 회원가입 전이라 비활성화하고 안내 문구를 보여줍니다.
-  final VoidCallback? onRate;
+  final VoidCallback onRate;
 
   @override
   Widget build(BuildContext context) {
-    final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(24),
-    );
-
     return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: Row(
-          children: [
-            Expanded(
-              child: SizedBox(
-                height: 52,
-                child: OutlinedButton.icon(
-                  onPressed: onFavorite,
-                  icon: Icon(
-                    isFavorite ? Icons.bookmark : Icons.bookmark_border,
-                  ),
-                  label: const Text('즐겨찾기'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.violet,
-                    side: const BorderSide(color: AppColors.violet),
-                    shape: shape,
-                  ),
-                ),
+        child: SizedBox(
+          height: 52,
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: onRate,
+            icon: const Icon(Icons.rate_review_outlined),
+            label: const Text('평점 남기기'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.violet,
+              foregroundColor: AppColors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: SizedBox(
-                height: 52,
-                child: ElevatedButton.icon(
-                  onPressed: onRate,
-                  icon: const Icon(Icons.rate_review_outlined),
-                  label: Text(onRate == null ? '가입 후 평점 남기기' : '평점 남기기'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.violet,
-                    foregroundColor: AppColors.white,
-                    disabledBackgroundColor: AppColors.gray,
-                    disabledForegroundColor: AppColors.white,
-                    elevation: 0,
-                    shape: shape,
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

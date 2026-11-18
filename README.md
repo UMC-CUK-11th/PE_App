@@ -21,6 +21,8 @@ UMC 11기 PE(Mobile) 파트 Flutter 워크북 미션 앱입니다.
 | 5주차 | `week05` | TMDB 영화 API와 MVVM·Provider |
 | 6주차 | `week06` | 중복 확인 연동·내가 등록한 평점 / 회원가입·평점 저장 API |
 | 7주차 | `week07` | 회원가입 POST·평점 등록/수정/삭제(v6 CRUD)·다중 삭제 |
+| 8주차 | `week08` | JWT 로그인·세션 복원·v7 토큰 기반 평점·내 정보 수정 / BE 즐겨찾기·영화 기록 트랜잭션 |
+| 9주차 | `week09` | v8 즐겨찾기 연동·내 즐겨찾기·영화 목록 페이지네이션(무한 스크롤)·영화 검색 / BE 테스트하고 다듬기 |
 
 ## 실행
 TMDB Read Access Token을 `FE/.env`에 넣은 뒤 실행합니다. `.env`는 Git에 올라가지 않습니다.
@@ -31,7 +33,7 @@ flutter pub get
 flutter run
 ```
 
-워크북 백엔드(`https://workbook.devnoco.com`)의 v6 API를 기본으로 호출합니다. 로컬 백엔드를 쓰려면 `.env`에 `MOVIELOG_API_BASE_URL`을 지정합니다.
+워크북 백엔드(`https://workbook.devnoco.com`)의 v8 API를 기본으로 호출합니다. accessToken은 `flutter_secure_storage`에만 저장하고, 보호 API(`/v8/members/me`, `/v8/ratings`, `/v8/favorites`, `/v8/movie-records`)에만 Bearer를 붙입니다. 로컬 백엔드를 쓰려면 `.env`에 `MOVIELOG_API_BASE_URL`을 지정합니다.
 
 요청 실패 재현: `flutter run --dart-define=TMDB_ACCESS_TOKEN=invalid` (401 로그 확인)
 

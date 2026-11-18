@@ -1,0 +1,22 @@
+# 9주차: 테스트 전용 설정. 테스트 클래스패스에서는 이 파일이 src/main/resources/application.yml을 "가립니다".
+# (덮어쓰기가 아니라 대체이므로 main에만 있는 jwt·springdoc 설정도 여기에 다시 적어야 합니다.)
+spring:
+  datasource:
+    # 개발용 MySQL 대신 테스트가 도는 동안만 메모리에 생기는 DB. MODE=MySQL은 "MySQL인 척" 옵션입니다.
+    url: jdbc:h2:mem:umc_movie;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      # 테스트마다 메모리 DB의 스키마를 엔티티로 새로 만들어 매핑도 함께 검증합니다.
+      ddl-auto: create-drop
+    open-in-view: false
+
+# 이 값이 없으면 JwtProvider가 @Value를 찾지 못해 컨텍스트가 뜨지 않습니다. HS256이라 32바이트 이상이어야 합니다.
+jwt:
+  secret: test-secret-for-context-loading-only-0123456789
+  access-expiration-seconds: 3600
+
+springdoc:
+  override-with-generic-response: false

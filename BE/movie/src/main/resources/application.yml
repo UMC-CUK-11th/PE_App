@@ -11,3 +11,17 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+
+# 7주차 JWT. 운영에서는 반드시 환경 변수 JWT_SECRET(32바이트 이상)로 덮어씁니다.
+jwt:
+  secret: ${JWT_SECRET:local-dev-only-secret-change-me-0123456789abcdef}
+  access-expiration-seconds: ${JWT_ACCESS_EXPIRATION:3600}
+
+# 9주차 Swagger. 문서 화면 /swagger-ui.html, JSON /v3/api-docs
+springdoc:
+  swagger-ui:
+    tags-sorter: alpha
+    operations-sorter: method
+  # @RestControllerAdvice의 예외 처리기를 모든 API의 응답으로 일괄 추가하지 않습니다.
+  # 실패 응답은 API마다 @ApiErrorCodes로 적은 것만 문서에 나타납니다.
+  override-with-generic-response: false

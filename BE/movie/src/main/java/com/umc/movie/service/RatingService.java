@@ -6,6 +6,7 @@ import com.umc.movie.dto.UpdateRatingRequest;
 import com.umc.movie.entity.Member;
 import com.umc.movie.entity.Rating;
 import com.umc.movie.exception.ApiException;
+import com.umc.movie.exception.ErrorCode;
 import com.umc.movie.repository.MemberRepository;
 import com.umc.movie.repository.RatingRepository;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+/** 7주차 이후 쓰기 API는 요청에 memberId를 받지 않고, 토큰의 회원(memberId)만 다룹니다. */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -24,7 +26,7 @@ public class RatingService {
 
     public List<RatingResponse> getRatingsByMember(Long memberId) {
         if (!memberRepository.existsById(memberId)) {
-            throw memberNotFound();
+            throw new ApiException(ErrorCode.MEMBER_NOT_FOUND);
         }
 
         return ratingRepository.findByMember_MemberIdOrderByRatingIdDesc(memberId).stream()
@@ -33,12 +35,13 @@ public class RatingService {
     }
 
     @Transactional
-    public Long create(Long memberId, CreateRatingRequest request) {
-        Member member = memberRepository.findById(memberId).orElseThrow(this::memberNotFound);
+    public RatingResponse create(Long memberId, CreateRatingRequest request) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new ApiException(ErrorCode.MEMBER_NOT_FOUND));
 
-        // (member_id, movie_id) UNIQUE 제약이 최종 방어선이지만, 정해 둔 메시지로 응답하려고 먼저 확인합니다.
+        // (member_id, movie_id) UNIQUE 제약이 최종 방어선이지만, 정해 둔 code로 응답하려고 먼저 확인합니다.
         if (ratingRepository.existsByMember_MemberIdAndMovieId(memberId, request.movieId())) {
-            throw ApiException.conflict("RATING4091", "이미 이 영화에 평점을 남기셨습니다.");
+            throw new ApiException(ErrorCode.RATING_DUPLICATED);
         }
 
         Rating rating = Rating.builder()
@@ -48,32 +51,31 @@ public class RatingService {
                 .comment(request.comment())
                 .build();
 
-        return ratingRepository.saveAndFlush(rating).getRatingId();
+        return RatingResponse.from(ratingRepository.saveAndFlush(rating));
+    }
+
+    /** PATCH지만 전체 교체입니다. comment를 빼고 보내면 기존 후기가 null로 덮입니다. */
+    @Transactional
+    public RatingResponse update(Long memberId, Long ratingId, UpdateRatingRequest request) {
+        Rating rating = findOwnedRating(memberId, ratingId);
+        rating.update(request.score(), request.comment());
+        // flush 시점에 @UpdateTimestamp가 updatedAt을 갱신하므로, 응답에 새 값을 담으려고 먼저 flush합니다.
+        return RatingResponse.from(ratingRepository.saveAndFlush(rating));
     }
 
     @Transactional
-    public void update(Long ratingId, Long memberId, UpdateRatingRequest request) {
-        // 변경 감지로 트랜잭션이 끝날 때 UPDATE가 실행되고 updated_at도 갱신됩니다.
-        findOwnedRating(ratingId, memberId).update(request.score(), request.comment());
+    public void delete(Long memberId, Long ratingId) {
+        ratingRepository.delete(findOwnedRating(memberId, ratingId));
     }
 
-    @Transactional
-    public void delete(Long ratingId, Long memberId) {
-        ratingRepository.delete(findOwnedRating(ratingId, memberId));
-    }
-
-    /** 평점이 없으면 404, 요청한 회원의 평점이 아니면 403입니다. */
-    private Rating findOwnedRating(Long ratingId, Long memberId) {
+    /** 평점이 없으면 404 RATING404_1, 토큰의 회원이 작성한 평점이 아니면 403 RATING403_1입니다. */
+    private Rating findOwnedRating(Long memberId, Long ratingId) {
         Rating rating = ratingRepository.findById(ratingId)
-                .orElseThrow(() -> ApiException.notFound("RATING4041", "존재하지 않는 평점입니다."));
+                .orElseThrow(() -> new ApiException(ErrorCode.RATING_NOT_FOUND));
 
         if (!rating.isWrittenBy(memberId)) {
-            throw ApiException.forbidden("RATING4031", "본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.");
+            throw new ApiException(ErrorCode.RATING_FORBIDDEN);
         }
         return rating;
-    }
-
-    private ApiException memberNotFound() {
-        return ApiException.notFound("MEMBER4041", "존재하지 않는 유저입니다.");
     }
 }

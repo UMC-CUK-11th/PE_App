@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -7,9 +5,11 @@ import 'package:provider/provider.dart';
 import '../../data/models/tmdb_movie_dto.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
+import '../../view_models/load_phase.dart';
 import '../../view_models/movie_list_view_model.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../widgets/movie_cards.dart';
+import '../../widgets/movie_page_footer.dart';
 import 'genre_chip_bar.dart';
 import 'genre_filter_sheet.dart';
 import 'movie_list_states.dart';
@@ -23,39 +23,28 @@ class MovieListScreen extends StatefulWidget {
 }
 
 class _MovieListScreenState extends State<MovieListScreen> {
-  final _refreshKey = GlobalKey<RefreshIndicatorState>();
+  final _scrollController = ScrollController();
 
-  Future<void> _refresh() async {
-    final viewModel = context.read<MovieListViewModel>();
-    final succeeded = await viewModel.refresh();
-    // 최근 성공 목록이 있을 때만 목록을 유지한 채 재시도 Dialog를 띄웁니다.
-    // 새로고침 스피너가 Dialog 뒤에서 계속 돌지 않도록 기다리지 않습니다.
-    if (!succeeded && mounted && viewModel.movies.isNotEmpty) {
-      unawaited(_showRetryDialog());
-    }
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
   }
 
-  Future<void> _showRetryDialog() async {
-    final retry = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('영화를 불러오지 못했어요'),
-        content: const Text('네트워크 상태를 확인한 뒤 다시 시도해 주세요.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('재시도'),
-          ),
-        ],
-      ),
-    );
+  /// Challenge: 끝에 가까워지면 다음 page를 자동으로 불러옵니다(중복 요청은 ViewModel이 막음).
+  void _onScroll() {
+    final viewModel = context.read<MovieListViewModel>();
+    // 실패한 page는 스크롤로 자동 재요청하지 않고 "다음 페이지 다시 시도" 버튼으로만 다시 부릅니다.
+    if (viewModel.loadMoreError != null) return;
+    if (_scrollController.position.extentAfter < 400) viewModel.loadNextPage();
+  }
 
-    // 같은 장르 조건으로 page 1부터 다시 요청합니다.
-    if (retry == true && mounted) await _refreshKey.currentState?.show();
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    super.dispose();
   }
 
   Future<void> _openFilter(MovieListViewModel viewModel) async {
@@ -95,16 +84,16 @@ class _MovieListScreenState extends State<MovieListScreen> {
   }
 
   Widget _buildBody(MovieListViewModel viewModel) {
-    switch (viewModel.status) {
-      case MovieListLoadStatus.idle:
-      case MovieListLoadStatus.loading:
+    switch (viewModel.phase) {
+      case LoadPhase.idle:
+      case LoadPhase.loading:
         return const MovieListLoading();
-      case MovieListLoadStatus.error:
+      case LoadPhase.error:
         return MovieListError(
-          message: viewModel.message,
-          onRetry: viewModel.retry,
+          message: viewModel.genreError ?? viewModel.errorMessage,
+          onRetry: viewModel.refresh,
         );
-      case MovieListLoadStatus.empty:
+      case LoadPhase.empty:
         return viewModel.selectedGenreIds == null
             ? const MovieListEmpty(message: '불러올 영화가 없어요')
             : MovieListEmpty(
@@ -112,29 +101,43 @@ class _MovieListScreenState extends State<MovieListScreen> {
                 actionLabel: '전체 장르 보기',
                 onAction: () => viewModel.selectGenres(null),
               );
-      case MovieListLoadStatus.success:
+      case LoadPhase.ready:
         final movies = viewModel.movies;
-        return GridView.builder(
+        return CustomScrollView(
+          controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          itemCount: movies.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 16,
-            childAspectRatio: 0.55,
-          ),
-          itemBuilder: (context, index) {
-            final movie = movies[index];
-            return MovieGridCard(
-              movie: movie,
-              subtitle: [
-                ?movie.year,
-                viewModel.genreNamesOf(movie),
-              ].where((text) => text.isNotEmpty).join(' · '),
-              onTap: () => _openDetail(movie),
-            );
-          },
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              sliver: SliverGrid.builder(
+                itemCount: movies.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 0.55,
+                ),
+                itemBuilder: (context, index) {
+                  final movie = movies[index];
+                  return MovieGridCard(
+                    movie: movie,
+                    subtitle: [
+                      ?movie.year,
+                      viewModel.genreNamesOf(movie),
+                    ].where((text) => text.isNotEmpty).join(' · '),
+                    onTap: () => _openDetail(movie),
+                  );
+                },
+              ),
+            ),
+            // 버튼 대신 스크롤로 다음 page를 부르고, 실패하면 같은 page 재시도 버튼을 보여줍니다.
+            SliverToBoxAdapter(
+              child: MoviePageFooter(
+                viewModel: viewModel,
+                showLoadMoreButton: false,
+              ),
+            ),
+          ],
         );
     }
   }
@@ -147,7 +150,7 @@ class _MovieListScreenState extends State<MovieListScreen> {
         actions: [
           IconButton(
             tooltip: '검색',
-            onPressed: () {},
+            onPressed: () => context.push('/movies/search'),
             icon: const Icon(Icons.search),
           ),
         ],
@@ -197,13 +200,13 @@ class _MovieListScreenState extends State<MovieListScreen> {
             child: Consumer<MovieListViewModel>(
               builder: (context, viewModel, child) {
                 return RefreshIndicator(
-                  key: _refreshKey,
                   color: AppColors.violet,
                   // Loading 중에는 당겨서 새로고침이 동작하지 않습니다.
                   notificationPredicate: (notification) =>
                       !viewModel.isLoading &&
                       defaultScrollNotificationPredicate(notification),
-                  onRefresh: _refresh,
+                  // 새로고침은 같은 장르로 목록·page를 비우고 page 1부터 다시 불러옵니다.
+                  onRefresh: viewModel.refresh,
                   child: _buildBody(viewModel),
                 );
               },
