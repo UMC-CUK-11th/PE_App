@@ -66,7 +66,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   /// movieId는 이 화면의 MovieDetailViewModel이 이미 갖고 있습니다.
   Future<void> _openRatingDialog() async {
     final viewModel = context.read<MovieDetailViewModel>();
-    int? savedScore;
     final saved = await showDialog<bool>(
       context: context,
       barrierDismissible: false, // 저장 중 바깥 탭으로 닫히는 것도 막습니다.
@@ -77,14 +76,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           if (viewModel.submitStatus != SubmitStatus.success) {
             throw StateError(viewModel.submitMessage ?? '저장에 실패했습니다.');
           }
-          savedScore = score;
         },
       ),
     );
 
     // 저장 요청과 Snackbar 표시는 다른 비동기 경계라 mounted를 다시 확인합니다.
     if (!mounted || saved != true) return;
-    setState(() => _myRating = savedScore);
+    // 등록 result의 Rating 객체로 화면을 갱신합니다.
+    setState(() => _myRating = viewModel.savedRating?.score);
     _showMessage('평점을 등록했습니다. 마이페이지의 "내가 등록한 평점"에서 확인할 수 있습니다.');
   }
 
@@ -154,10 +153,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       bottomNavigationBar: DetailActionBar(
         isFavorite: _isFavorite,
         onFavorite: _toggleFavorite,
-        // 학습용 회원가입 전에는 평점을 저장할 memberId가 없습니다.
-        onRate: context.read<MovieDetailViewModel?>()?.memberId == null
-            ? null
-            : _openRatingDialog,
+        onRate: _openRatingDialog,
       ),
     );
   }
@@ -240,9 +236,7 @@ class DetailActionBar extends StatelessWidget {
 
   final bool isFavorite;
   final VoidCallback onFavorite;
-
-  /// null이면 회원가입 전이라 비활성화하고 안내 문구를 보여줍니다.
-  final VoidCallback? onRate;
+  final VoidCallback onRate;
 
   @override
   Widget build(BuildContext context) {
@@ -280,12 +274,10 @@ class DetailActionBar extends StatelessWidget {
                 child: ElevatedButton.icon(
                   onPressed: onRate,
                   icon: const Icon(Icons.rate_review_outlined),
-                  label: Text(onRate == null ? '가입 후 평점 남기기' : '평점 남기기'),
+                  label: const Text('평점 남기기'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.violet,
                     foregroundColor: AppColors.white,
-                    disabledBackgroundColor: AppColors.gray,
-                    disabledForegroundColor: AppColors.white,
                     elevation: 0,
                     shape: shape,
                   ),
