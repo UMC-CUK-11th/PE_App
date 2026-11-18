@@ -1,7 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
-import '../data/services/member_check_service.dart';
+import '../data/models/create_member_request.dart';
+import '../data/services/sign_up_service.dart';
 
 /// idle: 확인 전이거나 입력이 바뀌어 무효화됨 / checking: 요청 중
 /// available: 사용 가능 / duplicated: 서버가 중복이라고 응답 / error: 통신 실패
@@ -65,27 +66,91 @@ class DuplicateCheckField {
   }
 }
 
-/// 회원가입 화면의 닉네임·이메일 중복 확인을 담당합니다.
-class SignUpViewModel extends ChangeNotifier {
-  SignUpViewModel(MemberCheckService service)
-    : nickname = DuplicateCheckField(service.checkNickname, '이미 사용 중인 닉네임입니다.'),
-      email = DuplicateCheckField(service.checkEmail, '이미 사용 중인 이메일입니다.');
+/// 회원가입·평점 쓰기 요청 한 번의 진행 상태입니다.
+enum SubmitStatus { idle, submitting, success, error }
 
+/// 회원가입 화면의 닉네임·이메일 중복 확인과 가입 POST를 담당합니다.
+class SignUpViewModel extends ChangeNotifier {
+  SignUpViewModel(this._service)
+    : nickname = DuplicateCheckField(
+        _service.checkNickname,
+        '이미 사용 중인 닉네임입니다.',
+      ),
+      email = DuplicateCheckField(_service.checkEmail, '이미 사용 중인 이메일입니다.');
+
+  final SignUpService _service;
   final DuplicateCheckField nickname;
   final DuplicateCheckField email;
   bool _disposed = false;
+
+  SubmitStatus submitStatus = SubmitStatus.idle;
+
+  /// 가입 성공 응답에서 읽은 실제 ID입니다.
+  int? createdMemberId;
+
+  /// 비밀번호 형식 400은 입력칸에 붙이는 필드 단위 오류입니다.
+  String? passwordErrorText;
+
+  /// 그 외 400·409는 어느 칸에도 붙일 수 없어 Snackbar로 한 번 보여줍니다.
+  String? snackbarMessage;
 
   bool get bothAvailable =>
       nickname.status == CheckStatus.available &&
       email.status == CheckStatus.available;
 
+  bool get isSubmitting => submitStatus == SubmitStatus.submitting;
+
   void onNicknameChanged(String value) {
     nickname.changed(value);
+    _clearServerError();
     _notify();
   }
 
   void onEmailChanged(String value) {
     email.changed(value);
+    _clearServerError();
+    _notify();
+  }
+
+  void onPasswordChanged() {
+    if (passwordErrorText == null) return;
+    passwordErrorText = null;
+    _notify();
+  }
+
+  /// 입력이 바뀌면 이전 가입 실패 결과도 더는 현재 값에 대한 것이 아닙니다.
+  void _clearServerError() {
+    snackbarMessage = null;
+    if (submitStatus == SubmitStatus.error) submitStatus = SubmitStatus.idle;
+  }
+
+  Future<void> submit(CreateMemberRequest request) async {
+    if (isSubmitting) return;
+    submitStatus = SubmitStatus.submitting;
+    createdMemberId = null;
+    passwordErrorText = null;
+    snackbarMessage = null;
+    _notify();
+
+    try {
+      final response = await _service.signUp(request);
+      final id = response.result?.memberId;
+      if (id == null) throw StateError('회원가입 결과에 memberId가 없습니다.');
+      createdMemberId = id;
+      submitStatus = SubmitStatus.success;
+    } on DioException catch (error) {
+      submitStatus = SubmitStatus.error;
+      final message = writeSignUpErrorMessage(error);
+      // 명세의 400 예시는 비밀번호지만 다른 400도 올 수 있어 문구로 목적지를 나눕니다.
+      if (error.response?.statusCode == 400 && message.contains('비밀번호')) {
+        passwordErrorText = message;
+      } else {
+        snackbarMessage = message;
+      }
+    } on StateError {
+      submitStatus = SubmitStatus.error;
+      snackbarMessage = '회원가입 응답을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+    }
     _notify();
   }
 
