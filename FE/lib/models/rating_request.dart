@@ -24,7 +24,7 @@ class UpdateRatingRequest {
 
   Map<String, dynamic> toJson() => {
     'score': input.score,
-    // v6 PATCH replaces the whole rating. Omitting comment clears it.
+    // PATCH replaces the rating fields. Omitting comment clears it.
     if (input.comment?.isNotEmpty == true) 'comment': input.comment,
   };
 }

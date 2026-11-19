@@ -1,6 +1,24 @@
 # 6주차 — 회원가입과 평점 CRUD
 
-현재 week07 브랜치의 실행 방법과 JWT API는 [7주차 문서](WEEK07.md)를 참고하세요. 아래는 week06의 기록입니다.
+JWT 설정과 실행 방법은 [7주차 문서](WEEK07.md)를 참고하세요.
+
+## 8주차 · 즐겨찾기와 영화 기록
+
+기존 MySQL `movie` 스키마에 `favorite` 테이블이 없으면 MySQL 클라이언트에서 `SOURCE sql/week08-favorite.sql;`을 실행합니다. 새 스키마는 `sql/create-tables.sql`만 실행하면 됩니다. 이미 `favorite` 테이블이 있다면 열과 `UNIQUE (member_id, movie_id)` 제약이 현재 정의와 일치하는지 확인하세요.
+
+아래 API는 모두 `Authorization: Bearer <accessToken>`이 필요합니다.
+
+| 요청 | 입력 | 성공 |
+| --- | --- | --- |
+| POST /favorites | `movieId` | 201, 등록한 즐겨찾기 |
+| GET /favorites | 없음 | 200, 내 즐겨찾기 배열(최신순) |
+| GET /favorites/{movieId} | 영화 ID | 200, `isFavorite` |
+| DELETE /favorites/{movieId} | 영화 ID | 200, `result: null` |
+| POST /movie-records | `movieId`, `score`, 선택적 `comment`, `addToFavorites` | 201, `rating`과 `favorite` |
+
+`addToFavorites`가 `false`이면 평점만 저장하고 `favorite`는 `null`입니다. 값이 `true`이면 두 저장을 한 트랜잭션으로 처리합니다. 즐겨찾기 중복은 `409 FAVORITE409_1`, 없는 즐겨찾기 해제는 `404 FAVORITE404_1`, 평점 중복은 `409 RATING409_1`을 반환합니다.
+
+## 6주차 기록
 
 Java 21 / Spring Boot 3.5.0 / MySQL. 기존 조회 API와 CORS 정책은 유지합니다.
 

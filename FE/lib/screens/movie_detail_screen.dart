@@ -5,8 +5,10 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../models/movie.dart';
+import '../models/common_response.dart';
 import '../services/rating_api_service.dart';
 import '../view_models/learning_member_session.dart';
+import '../view_models/auth_session.dart';
 import '../view_models/movie_detail_view_model.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
@@ -47,32 +49,45 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   }
 
   Future<void> _openRatingDialog() async {
+    final session = context.read<AuthSession?>();
+    final generation = session?.generation;
+    ApiFailure? accessFailure;
     final viewModel = MovieDetailViewModel(
       widget.movie.id,
       context.read<RatingApiService>(),
       context.read<LearningMemberSession>(),
+      auth: session,
     );
     final saved = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => RatingDialog(onSubmit: viewModel.register),
+      builder: (context) => RatingDialog(
+        onSubmit: viewModel.register,
+        onAccessFailure: session == null
+            ? null
+            : (error) => accessFailure = error,
+      ),
     );
-    if (saved != true || !mounted) return;
+    if (!mounted || (generation != null && !session!.isCurrent(generation))) {
+      return;
+    }
 
+    final message = saved == true ? '평점을 저장했습니다.' : accessFailure?.message;
+    if (message == null) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: const Text('평점을 저장했습니다.'),
-        ),
+        SnackBar(behavior: SnackBarBehavior.floating, content: Text(message)),
       );
   }
 
   @override
   Widget build(BuildContext context) {
     final movie = widget.movie;
-    final canRate = context.watch<LearningMemberSession?>()?.memberId != null;
+    final auth = context.watch<AuthSession?>();
+    final canRate = auth == null
+        ? context.watch<LearningMemberSession?>()?.memberId != null
+        : auth.signedIn && !auth.busy;
     return Scaffold(
       appBar: CommonAppBar(
         title: 'Cinema Archive',

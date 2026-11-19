@@ -13,6 +13,10 @@ import '../screens/my_ratings_screen.dart';
 import '../services/rating_api_service.dart';
 import '../view_models/my_ratings_view_model.dart';
 import '../view_models/learning_member_session.dart';
+import '../view_models/auth_session.dart';
+import '../screens/login_screen.dart';
+import '../screens/splash_screen.dart';
+import '../screens/edit_profile_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/main_screen.dart';
 import '../screens/movie_detail_screen.dart';
@@ -26,12 +30,37 @@ abstract final class AppRouter {
   static GoRouter createRouter({
     String initialLocation = '/start',
     TmdbMovieService? tmdbService,
+    AuthSession? session,
     MovieListPreferences movieListPreferences =
         const SharedPreferencesMovieListPreferences(),
   }) {
     return GoRouter(
       initialLocation: initialLocation,
+      refreshListenable: session,
+      redirect: session == null
+          ? null
+          : (_, state) {
+              final path = state.uri.path;
+              final public = path == '/login' || path == '/register';
+              return switch (session.status) {
+                AuthStatus.initializing ||
+                AuthStatus.restoreError => path == '/splash' ? null : '/splash',
+                AuthStatus.signedOut => public ? null : '/login',
+                AuthStatus.signedIn =>
+                  public || path == '/splash' || path == '/start'
+                      ? '/home'
+                      : null,
+              };
+            },
       routes: [
+        if (session != null) ...[
+          GoRoute(path: '/splash', builder: (_, _) => const SplashScreen()),
+          GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+          GoRoute(
+            path: '/my/profile/edit',
+            builder: (_, _) => const EditProfileScreen(),
+          ),
+        ],
         GoRoute(
           path: '/start',
           builder: (context, state) => const StartScreen(),
@@ -98,6 +127,7 @@ abstract final class AppRouter {
               context.read<RatingApiService>(),
               tmdbService ?? context.read<TmdbMovieService>(),
               memberId: context.read<LearningMemberSession>().memberId,
+              session: session,
             )..load(),
             child: const MyRatingsScreen(),
           ),
