@@ -115,7 +115,7 @@ class _RatingList extends StatelessWidget {
               child: Text(
                 editing
                     ? '${viewModel.selectedRatingIds.length}개 선택'
-                    // v7에는 토큰 기반 내 평점 목록 GET이 없어 이번 세션 등록분만 보여줍니다.
+                    // v8에도 토큰 기반 내 평점 목록 GET이 없어 이번 세션 등록분만 보여줍니다.
                     : '이번 로그인에서 등록한 평점 ${viewModel.ratings.length}개',
                 style: AppTextStyles.bodySmall,
               ),
@@ -276,7 +276,7 @@ Future<void> _onEditPressed(BuildContext context, RatingDto rating) async {
     builder: (_) => RatingDialog(
       initialScore: rating.score,
       initialComment: rating.comment, // null이면 빈 칸으로 시작합니다.
-      onSubmit: (score, comment) => viewModel.updateRating(
+      onSubmit: (score, comment, _) => viewModel.updateRating(
         ratingId: rating.ratingId,
         score: score,
         comment: comment,

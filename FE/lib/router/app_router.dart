@@ -16,10 +16,16 @@ import '../screens/profile_screen.dart';
 import '../screens/sign_up/sign_up_screen.dart';
 import '../screens/login/login_screen.dart';
 import '../screens/my/edit_profile_screen.dart';
+import '../screens/my/favorites_screen.dart';
+import '../screens/movies/movie_search_screen.dart';
 import '../screens/start/splash_screen.dart';
 import '../data/services/member_api_service.dart';
 import '../view_models/auth_view_model.dart';
 import '../view_models/edit_profile_view_model.dart';
+import '../view_models/favorite_detail_view_model.dart';
+import '../view_models/favorites_view_model.dart';
+import '../view_models/paged_movies_view_model.dart';
+import '../data/services/favorite_api_service.dart';
 import '../view_models/movie_detail_view_model.dart';
 import '../view_models/movie_home_view_model.dart';
 import '../view_models/movie_list_view_model.dart';
@@ -42,6 +48,22 @@ String? authRedirect(AuthStatus status, String location) {
     // 로그인됨: 스플래시·로그인·회원가입은 홈으로
     AuthStatus.signedIn => (atStart || atPublic) ? '/home' : null,
   };
+}
+
+/// 내 정보(email)가 준비된 현재 세션의 key. 닉네임 수정으로는 바뀌지 않고,
+/// 같은 이메일로 다시 로그인해도 sessionVersion이 바뀌어 새 ViewModel이 됩니다.
+String? _sessionKey(BuildContext context) {
+  final email = context.select<AuthViewModel, String?>((a) => a.member?.email);
+  final version = context.select<AuthViewModel, int>((a) => a.sessionVersion);
+  return email == null ? null : '$email:$version';
+}
+
+class _Loading extends StatelessWidget {
+  const _Loading();
+
+  @override
+  Widget build(BuildContext context) =>
+      const Scaffold(body: Center(child: CircularProgressIndicator()));
 }
 
 class AppRouter {
@@ -114,10 +136,22 @@ class AppRouter {
                         create: (context) => MovieListViewModel(
                           context.read<TmdbMovieService>(),
                           preference,
-                        )..loadInitial(),
+                        )..start(),
                         child: const MovieListScreen(),
                       ),
                   routes: [
+                    // 정적인 search를 동적인 :movieId보다 먼저 둬야 search가 영화 ID로 해석되지 않습니다.
+                    GoRoute(
+                      path: 'search',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (context, state) =>
+                          ChangeNotifierProvider<PagedMoviesViewModel>(
+                            create: (context) => PagedMoviesViewModel(
+                              tmdbApi: context.read<TmdbMovieService>(),
+                            ),
+                            child: const MovieSearchScreen(),
+                          ),
+                    ),
                     GoRoute(
                       path: ':movieId',
                       parentNavigatorKey: rootNavigatorKey,
@@ -134,12 +168,27 @@ class AppRouter {
                               : null,
                         );
                         if (id == null || id < 1) return screen;
-                        return ChangeNotifierProvider<MovieDetailViewModel>(
-                          create: (context) => MovieDetailViewModel(
-                            context.read<RatingApiService>(),
-                            context.read<AuthViewModel>(),
-                            id,
-                          ),
+                        final session = _sessionKey(context);
+                        if (session == null) return const _Loading();
+                        return MultiProvider(
+                          // 계정·세션이 바뀌면 이전 사용자의 ViewModel을 버리고 새로 만듭니다.
+                          key: ValueKey(session),
+                          providers: [
+                            ChangeNotifierProvider<MovieDetailViewModel>(
+                              create: (context) => MovieDetailViewModel(
+                                context.read<RatingApiService>(),
+                                context.read<AuthViewModel>(),
+                                id,
+                              ),
+                            ),
+                            ChangeNotifierProvider<FavoriteDetailViewModel>(
+                              create: (context) => FavoriteDetailViewModel(
+                                movieId: id,
+                                favoriteApi: context.read<FavoriteApiService>(),
+                                auth: context.read<AuthViewModel>(),
+                              ),
+                            ),
+                          ],
                           child: screen,
                         );
                       },
@@ -167,6 +216,23 @@ class AppRouter {
                             )..load(),
                             child: const MyRatingsScreen(),
                           ),
+                    ),
+                    GoRoute(
+                      path: 'favorites', // 최종 경로: /my/favorites
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (context, state) {
+                        final session = _sessionKey(context);
+                        if (session == null) return const _Loading();
+                        return ChangeNotifierProvider<FavoritesViewModel>(
+                          key: ValueKey(session),
+                          create: (context) => FavoritesViewModel(
+                            favoriteApi: context.read<FavoriteApiService>(),
+                            tmdbApi: context.read<TmdbMovieService>(),
+                            auth: context.read<AuthViewModel>(),
+                          ),
+                          child: const FavoritesScreen(),
+                        );
+                      },
                     ),
                     GoRoute(
                       path: 'profile/edit', // 최종 경로: /my/profile/edit

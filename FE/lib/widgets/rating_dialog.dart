@@ -11,19 +11,33 @@ import 'movielog_button.dart';
 /// 평점 등록·수정 공용 Dialog. 저장까지 마치면 true, 취소하면 false를 돌려줍니다.
 /// 저장 중에는 PopScope로 뒤로가기를 막습니다. 바깥 탭은 showDialog의
 /// barrierDismissible: false로 함께 막아야 합니다.
+/// onSubmit이 던지면 Dialog를 닫고 [message]를 Snackbar로 안내합니다(예: 이미 평점을 남긴 409).
+/// 다른 예외는 Dialog를 연 채 안에 오류를 보여주고 입력값을 유지합니다.
+class CloseRatingDialog implements Exception {
+  const CloseRatingDialog(this.message);
+
+  final String message;
+}
+
 class RatingDialog extends StatefulWidget {
   const RatingDialog({
     super.key,
     this.initialScore = 0,
     this.initialComment,
+    this.showAddToFavorite = false,
     required this.onSubmit,
   });
 
   final int initialScore;
   final String? initialComment;
 
+  /// Challenge: 상세의 "평점 남기기"에서 아직 즐겨찾기하지 않은 영화일 때만 체크박스를 보여줍니다.
+  /// 평점 수정에서는 false라 addToFavorites는 항상 false입니다.
+  final bool showAddToFavorite;
+
   /// 실패하면 예외를 던집니다. Dialog가 잡아 안내하고 다시 시도할 수 있게 둡니다.
-  final Future<void> Function(int score, String? comment) onSubmit;
+  final Future<void> Function(int score, String? comment, bool addToFavorites)
+  onSubmit;
 
   @override
   State<RatingDialog> createState() => _RatingDialogState();
@@ -39,6 +53,7 @@ class _RatingDialogState extends State<RatingDialog> {
   );
   int _resetCount = 0;
   bool _isSubmitting = false;
+  bool _addToFavorites = false;
   String? _errorText;
 
   bool get _hasScore => _score > 0;
@@ -68,9 +83,18 @@ class _RatingDialogState extends State<RatingDialog> {
     });
 
     try {
-      await widget.onSubmit(_score, trimmed.isEmpty ? null : trimmed);
+      await widget.onSubmit(
+        _score,
+        trimmed.isEmpty ? null : trimmed,
+        widget.showAddToFavorite && _addToFavorites,
+      );
       if (!mounted) return;
       Navigator.pop(context, true);
+    } on CloseRatingDialog catch (error) {
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.pop(context, false);
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
     } catch (error) {
       if (!mounted) return;
       // 실패해도 로딩을 풀어야 다시 시도할 수 있습니다. 입력값은 그대로 둡니다.
@@ -138,6 +162,22 @@ class _RatingDialogState extends State<RatingDialog> {
                   ),
                 ),
               ),
+              if (widget.showAddToFavorite)
+                CheckboxListTile(
+                  value: _addToFavorites,
+                  onChanged: _isSubmitting
+                      ? null
+                      : (value) =>
+                            setState(() => _addToFavorites = value ?? false),
+                  title: const Text(
+                    '즐겨찾기에도 추가',
+                    style: AppTextStyles.bodyMedium,
+                  ),
+                  activeColor: AppColors.violet,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
               if (errorText != null) ...[
                 const SizedBox(height: 8),
                 Text(

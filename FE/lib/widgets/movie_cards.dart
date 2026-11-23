@@ -132,3 +132,47 @@ class MovieGridCard extends StatelessWidget {
     );
   }
 }
+
+/// 검색 결과·내 즐겨찾기처럼 세로 목록에 쓰는 영화 행입니다. 포스터가 없으면 placeholder를 그립니다.
+class MovieListTile extends StatelessWidget {
+  const MovieListTile({
+    super.key,
+    required this.movie,
+    required this.onTap,
+    this.subtitle,
+  });
+
+  final TmdbMovieDto movie;
+  final VoidCallback onTap;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: TmdbPosterImage(
+        posterPath: movie.posterPath,
+        width: 48,
+        height: 72,
+        borderRadius: 6,
+        semanticLabel: '${movie.title} 포스터',
+      ),
+      title: Text(
+        movie.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppTextStyles.labelLarge,
+      ),
+      subtitle: Text(
+        subtitle ??
+            [
+              ?movie.year,
+              '★ ${movie.voteAverage.toStringAsFixed(1)}',
+            ].join(' · '),
+        style: AppTextStyles.bodySmall,
+      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
+    );
+  }
+}

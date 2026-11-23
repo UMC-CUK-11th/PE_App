@@ -27,13 +27,7 @@ import static org.mockito.BDDMockito.willReturn;
  * 테스트 메서드에는 @Transactional을 붙이지 않습니다. 붙이면 서비스가 테스트 트랜잭션에 합류해
  * 롤백 여부를 볼 수 없기 때문입니다.
  */
-@SpringBootTest(properties = {
-        "spring.datasource.url=jdbc:h2:mem:movielog;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
-        "spring.datasource.username=sa",
-        "spring.datasource.password=",
-        "spring.datasource.driver-class-name=org.h2.Driver",
-        "spring.jpa.hibernate.ddl-auto=create-drop"
-})
+@SpringBootTest // DB 설정은 src/test/resources/application.yml(H2, MySQL 모드)
 class MovieRecordTransactionTest {
 
     @Autowired

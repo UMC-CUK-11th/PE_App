@@ -17,7 +17,7 @@ RatingDto parseRatingResult(Object? data) {
   return rating;
 }
 
-/// 평점(v7). 조회는 공개 Client, 등록·수정·삭제는 보호 Client로 보냅니다.
+/// 평점(v8). 조회는 공개 Client, 등록·수정·삭제는 보호 Client로 보냅니다.
 /// 보호 요청에는 memberId가 없고 Authorization 헤더로 회원을 식별합니다.
 class RatingApiService {
   RatingApiService(this._publicDio, this._authDio);
@@ -27,7 +27,7 @@ class RatingApiService {
 
   /// 공개 유저별 조회: 200 + 직접 배열, 토큰 없음.
   Future<List<RatingDto>> fetchMemberRatings(int memberId) async {
-    final response = await _publicDio.get('/v7/members/$memberId/ratings');
+    final response = await _publicDio.get('/v8/members/$memberId/ratings');
     final data = response.data;
     if (data is! List) throw StateError('평점 목록 응답은 배열이어야 합니다.');
     return data
@@ -37,7 +37,7 @@ class RatingApiService {
 
   /// 201 + 공통 형식(result: Rating 객체).
   Future<RatingDto> createRating(CreateRatingRequest request) async {
-    final response = await _authDio.post('/v7/ratings', data: request.toJson());
+    final response = await _authDio.post('/v8/ratings', data: request.toJson());
     return parseRatingResult(response.data);
   }
 
@@ -48,15 +48,32 @@ class RatingApiService {
     String? comment,
   }) async {
     final response = await _authDio.patch(
-      '/v7/ratings/$ratingId',
+      '/v8/ratings/$ratingId',
       data: {'score': score, 'comment': comment},
     );
     return parseRatingResult(response.data);
   }
 
+  /// Challenge: 평점과 즐겨찾기를 서버 트랜잭션 하나로 저장합니다(POST /v8/movie-records).
+  /// 하나라도 실패하면 둘 다 저장되지 않습니다. 저장된 평점만 돌려줍니다.
+  Future<RatingDto> createMovieRecord({
+    required CreateRatingRequest request,
+    required bool addToFavorites,
+  }) async {
+    final response = await _authDio.post(
+      '/v8/movie-records',
+      data: {...request.toJson(), 'addToFavorites': addToFavorites},
+    );
+    final result = (response.data as Map<String, dynamic>)['result'];
+    if (result is! Map<String, dynamic>) {
+      throw StateError('영화 기록 result가 없습니다.');
+    }
+    return RatingDto.fromJson(result['rating'] as Map<String, dynamic>);
+  }
+
   /// v6의 204와 달리 200 + result null입니다.
   Future<void> deleteRating(int ratingId) async {
-    final response = await _authDio.delete('/v7/ratings/$ratingId');
+    final response = await _authDio.delete('/v8/ratings/$ratingId');
     if (response.statusCode != 200) {
       throw StateError('예상하지 못한 삭제 응답: ${response.statusCode}');
     }

@@ -8,7 +8,7 @@ import '../../view_models/edit_profile_view_model.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../widgets/movielog_button.dart';
 
-/// 프로필 수정. email은 읽기 전용, nickname만 PATCH /v7/members/me로 바꿉니다.
+/// 프로필 수정. email은 읽기 전용, nickname만 PATCH /v8/members/me로 바꿉니다.
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
 

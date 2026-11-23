@@ -1,6 +1,7 @@
 package com.umc.movie.interceptor;
 
 import com.umc.movie.exception.ApiException;
+import com.umc.movie.exception.ErrorCode;
 import com.umc.movie.jwt.JwtProvider;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -9,7 +10,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -30,7 +30,8 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     private record PublicApi(HttpMethod method, String pattern) {}
 
-    // 새 보호 API(/favorites, /movie-records 등)는 여기에 넣지 않습니다.
+    // 새 보호 API(/favorites, /ratings, /members/me 등)는 여기에 넣지 않습니다.
+    // Swagger 문서 경로는 로그인 전에도 열려야 하므로 공개합니다(9주차 실습 1).
     private static final List<PublicApi> PUBLIC = List.of(
             new PublicApi(HttpMethod.POST, "/auth/login"),
             new PublicApi(HttpMethod.POST, "/members"),
@@ -55,7 +56,7 @@ public class AuthInterceptor implements HandlerInterceptor {
 
         String header = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (header == null || !header.startsWith(BEARER) || header.substring(BEARER.length()).isBlank()) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "AUTH401_2", "로그인이 필요합니다.");
+            throw new ApiException(ErrorCode.TOKEN_MISSING);
         }
 
         try {
@@ -63,9 +64,9 @@ public class AuthInterceptor implements HandlerInterceptor {
             request.setAttribute(MEMBER_ID, memberId);
             return true;
         } catch (ExpiredJwtException e) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "AUTH401_4", "토큰이 만료되었습니다. 다시 로그인해 주세요.");
+            throw new ApiException(ErrorCode.TOKEN_EXPIRED);
         } catch (JwtException | IllegalArgumentException e) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "AUTH401_3", "유효하지 않은 토큰입니다.");
+            throw new ApiException(ErrorCode.TOKEN_INVALID);
         }
     }
 

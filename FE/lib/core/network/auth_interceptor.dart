@@ -12,12 +12,19 @@ class AuthInterceptor extends Interceptor {
   /// MovieLog API host. 이 host의 보호 path에만 토큰을 붙입니다.
   final String host;
 
-  bool isProtected(Uri uri) {
+  /// 워크북 host의 보호 요청에만 JWT를 붙입니다. 로그인·회원가입·중복 확인·공개 평점 조회는 제외합니다.
+  bool isProtected(Uri uri, String method) {
+    if (uri.host != host) return false;
     final path = uri.path;
-    return uri.host == host &&
-        (path == '/v7/members/me' ||
-            path == '/v7/ratings' ||
-            path.startsWith('/v7/ratings/'));
+    final verb = method.toUpperCase();
+    final member = path == '/v8/members/me';
+    final ratings = path == '/v8/ratings' || path.startsWith('/v8/ratings/');
+    final favorites =
+        (path == '/v8/favorites' && (verb == 'GET' || verb == 'POST')) ||
+        (RegExp(r'^/v8/favorites/[1-9]\d*$').hasMatch(path) &&
+            (verb == 'GET' || verb == 'DELETE'));
+    final movieRecord = path == '/v8/movie-records' && verb == 'POST';
+    return member || ratings || favorites || movieRecord;
   }
 
   @override
@@ -27,7 +34,7 @@ class AuthInterceptor extends Interceptor {
   ) async {
     // 이전 요청의 토큰을 재사용하지 않습니다.
     options.headers.remove('Authorization');
-    if (!isProtected(options.uri)) {
+    if (!isProtected(options.uri, options.method)) {
       handler.next(options);
       return;
     }
