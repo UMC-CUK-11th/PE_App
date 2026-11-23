@@ -48,21 +48,7 @@ class MyRatingsScreen extends StatelessWidget {
                   ),
                   MyRatingsLoadStatus.empty => const _Message(
                     icon: Icons.rate_review_outlined,
-                    text: '아직 등록한 평점이 없어요.',
-                  ),
-                  MyRatingsLoadStatus.error => _Message(
-                    icon: Icons.error_outline,
-                    // 저장 성공 뒤 GET만 실패했다면 쓰기를 다시 보내지 않고 조회만 재시도합니다.
-                    text:
-                        viewModel.refreshWarning ??
-                        viewModel.message ??
-                        '평점을 불러오지 못했습니다.',
-                    // 고정 너비 예시: 화면 크기와 관계없이 120을 유지합니다.
-                    action: MovieLogButton(
-                      label: '다시 시도',
-                      width: 120,
-                      onPressed: viewModel.retryLoad,
-                    ),
+                    text: '이번 로그인에서 등록한 평점이 없어요.\n영화 상세에서 평점을 남겨 보세요.',
                   ),
                   MyRatingsLoadStatus.success => _RatingList(
                     viewModel: viewModel,
@@ -129,7 +115,8 @@ class _RatingList extends StatelessWidget {
               child: Text(
                 editing
                     ? '${viewModel.selectedRatingIds.length}개 선택'
-                    : '학습용 회원(memberId ${viewModel.memberId})의 평점 ${viewModel.ratings.length}개',
+                    // v7에는 토큰 기반 내 평점 목록 GET이 없어 이번 세션 등록분만 보여줍니다.
+                    : '이번 로그인에서 등록한 평점 ${viewModel.ratings.length}개',
                 style: AppTextStyles.bodySmall,
               ),
             ),
@@ -392,36 +379,11 @@ class _DeleteRatingDialogState extends State<_DeleteRatingDialog> {
   }
 }
 
-/// 가입 결과의 memberId가 없을 때 보여줍니다. 앱을 재시작해도 이 상태가 됩니다.
-class MemberRequiredScreen extends StatelessWidget {
-  const MemberRequiredScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CommonAppBar(
-        title: '내가 등록한 평점',
-        centerTitle: true,
-        onBack: () => _goBack(context),
-      ),
-      body: _Message(
-        icon: Icons.person_add_alt_1_outlined,
-        text: '학습용 회원가입이 필요합니다.',
-        action: MovieLogButton(
-          label: '회원가입하기',
-          onPressed: () => context.go('/register'),
-        ),
-      ),
-    );
-  }
-}
-
 class _Message extends StatelessWidget {
-  const _Message({required this.icon, required this.text, this.action});
+  const _Message({required this.icon, required this.text});
 
   final IconData icon;
   final String text;
-  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -438,10 +400,6 @@ class _Message extends StatelessWidget {
               textAlign: TextAlign.center,
               style: AppTextStyles.bodyMedium,
             ),
-            if (action case final action?) ...[
-              const SizedBox(height: 16),
-              action,
-            ],
           ],
         ),
       ),

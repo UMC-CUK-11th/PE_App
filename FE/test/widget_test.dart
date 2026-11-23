@@ -10,10 +10,10 @@ import 'package:movielog/data/models/rating_dto.dart';
 import 'package:movielog/data/models/tmdb_genre_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_page.dart';
-import 'package:movielog/data/models/common_response.dart';
 import 'package:movielog/data/models/create_member_request.dart';
 import 'package:movielog/data/models/rating_request.dart';
 import 'package:movielog/data/models/sign_up_models.dart';
+import 'package:movielog/data/models/common_response.dart';
 import 'package:movielog/data/services/rating_api_service.dart';
 import 'package:movielog/data/services/sign_up_service.dart';
 import 'package:movielog/data/services/tmdb_movie_service.dart';
@@ -21,7 +21,19 @@ import 'package:movielog/router/app_router.dart';
 import 'package:movielog/screens/movies/genre_filter_sheet.dart';
 import 'package:movielog/screens/sign_up/sign_up_validators.dart';
 import 'package:movielog/theme/app_theme.dart';
-import 'package:movielog/view_models/learning_member_session.dart';
+import 'package:movielog/core/network/api_error.dart';
+import 'package:movielog/core/network/auth_interceptor.dart';
+import 'package:movielog/core/storage/token_storage.dart';
+import 'package:movielog/data/models/login_models.dart';
+import 'package:movielog/data/models/member_info.dart';
+import 'package:movielog/data/services/auth_api_service.dart';
+import 'package:movielog/data/services/member_api_service.dart';
+import 'package:movielog/screens/login/login_screen.dart';
+import 'package:movielog/view_models/auth_view_model.dart';
+import 'package:movielog/view_models/edit_profile_view_model.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+import 'package:shared_preferences_platform_interface/types.dart';
 import 'package:movielog/view_models/movie_list_view_model.dart';
 import 'package:movielog/view_models/my_ratings_view_model.dart';
 import 'package:movielog/view_models/sign_up_view_model.dart';
@@ -205,46 +217,21 @@ class FakeSignUpService extends SignUpService {
   }
 }
 
-/// 워크북 v6 평점 CRUD를 메모리 목록으로 흉내 냅니다.
+/// v7 평점 쓰기 응답을 메모리 목록으로 흉내 냅니다.
 class FakeRatingApiService extends RatingApiService {
-  FakeRatingApiService({List<RatingDto> ratings = const []})
-    : ratings = [...ratings],
-      super(Dio());
-
-  List<RatingDto> ratings;
-  int? failStatus;
+  FakeRatingApiService() : super(Dio(), Dio());
 
   /// 설정하면 다음 쓰기 요청이 이 오류로 실패합니다.
   DioException? writeError;
 
-  /// 이 ratingId의 DELETE만 실패시킵니다.
-  final failDeleteIds = <int>{};
-
-  /// true면 쓰기가 성공한 뒤의 GET만 실패합니다.
-  bool failFetchAfterWrite = false;
+  /// 이 ratingId의 DELETE만 실패시킵니다(값: 오류).
+  final failDeleteIds = <int, DioException>{};
   Completer<void>? writeGate;
+  int _nextId = 100;
 
-  int fetchCalls = 0;
   final created = <Map<String, dynamic>>[];
   final updated = <({int ratingId, int score, String? comment})>[];
   final deleted = <int>[];
-
-  @override
-  Future<List<RatingDto>> fetchMyRatings(int memberId) async {
-    fetchCalls++;
-    final status = failStatus;
-    if (status != null) {
-      throw DioException(
-        requestOptions: RequestOptions(path: '/v6/members/$memberId/ratings'),
-        response: Response(
-          requestOptions: RequestOptions(path: '/v6/members/$memberId/ratings'),
-          statusCode: status,
-        ),
-        type: DioExceptionType.badResponse,
-      );
-    }
-    return [...ratings];
-  }
 
   Future<void> _write() async {
     await writeGate?.future;
@@ -253,51 +240,147 @@ class FakeRatingApiService extends RatingApiService {
     if (error != null) throw error;
   }
 
-  void _afterWrite() {
-    if (failFetchAfterWrite) failStatus = 500;
-  }
-
   @override
-  Future<void> createRating({
-    required int memberId,
-    required CreateRatingRequest request,
-  }) async {
+  Future<RatingDto> createRating(CreateRatingRequest request) async {
     await _write();
-    created.add(request.toJson());
-    _afterWrite();
+    final json = request.toJson();
+    created.add(json);
+    return _rating(
+      _nextId++,
+      json['movieId'] as int,
+      score: json['score'] as int,
+      comment: json['comment'] as String?,
+    );
   }
 
   @override
-  Future<void> updateRating({
-    required int memberId,
+  Future<RatingDto> updateRating({
     required int ratingId,
     required int score,
     String? comment,
   }) async {
     await _write();
     updated.add((ratingId: ratingId, score: score, comment: comment));
-    ratings = [
-      for (final r in ratings)
-        r.ratingId == ratingId
-            ? _rating(r.ratingId, r.movieId, score: score, comment: comment)
-            : r,
-    ];
-    _afterWrite();
+    return _rating(ratingId, 1, score: score, comment: comment);
   }
 
   @override
-  Future<void> deleteRating({
-    required int memberId,
-    required int ratingId,
-  }) async {
+  Future<void> deleteRating(int ratingId) async {
     await _write();
-    if (failDeleteIds.contains(ratingId)) {
-      throw _apiError(404, 'COMMON404', '존재하지 않는 평점입니다.');
-    }
+    final error = failDeleteIds[ratingId];
+    if (error != null) throw error;
     deleted.add(ratingId);
-    ratings = ratings.where((r) => r.ratingId != ratingId).toList();
-    _afterWrite();
   }
+}
+
+class MemoryTokenStorage implements TokenStorage {
+  MemoryTokenStorage([this.token]);
+
+  String? token;
+  bool failRead = false;
+
+  @override
+  Future<void> saveAccessToken(String token) async => this.token = token;
+
+  @override
+  Future<String?> readAccessToken() async {
+    if (failRead) throw StateError('읽기 실패');
+    return token;
+  }
+
+  @override
+  Future<void> deleteAccessToken() async => token = null;
+}
+
+class FakeAuthApiService extends AuthApiService {
+  FakeAuthApiService() : super(Dio());
+
+  DioException? error;
+  final requests = <Map<String, dynamic>>[];
+
+  @override
+  Future<LoginResult> login(LoginRequest request) async {
+    requests.add(request.toJson());
+    final error = this.error;
+    if (error != null) throw error;
+    return const LoginResult(nickname: '무비러버', accessToken: 'new-token');
+  }
+}
+
+MemberInfo _member({String nickname = '무비러버'}) => MemberInfo(
+  email: 'movie@example.com',
+  nickname: nickname,
+  createdAt: DateTime(2026, 10, 10, 12),
+);
+
+class FakeMemberApiService extends MemberApiService {
+  FakeMemberApiService() : super(Dio());
+
+  MemberInfo member = _member();
+  DioException? fetchError;
+  DioException? updateError;
+  Completer<void>? fetchGate;
+  int fetchCalls = 0;
+  final nicknameUpdates = <String>[];
+
+  @override
+  Future<MemberInfo> fetchMe() async {
+    fetchCalls++;
+    await fetchGate?.future;
+    final error = fetchError;
+    if (error != null) throw error;
+    return member;
+  }
+
+  @override
+  Future<MemberInfo> updateNickname(String nickname) async {
+    nicknameUpdates.add(nickname);
+    final error = updateError;
+    if (error != null) throw error;
+    return member = _member(nickname: nickname);
+  }
+}
+
+/// 요청을 보내지 않고 마지막 헤더만 기록합니다.
+class _CaptureAdapter implements HttpClientAdapter {
+  Map<String, dynamic> lastHeaders = {};
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<List<int>>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    lastHeaders = Map.of(options.headers);
+    return ResponseBody.fromString(
+      '{}',
+      200,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+DioException _authError(String code) => _apiError(401, code, '인증 오류');
+
+/// 저장된 토큰으로 restoreSession까지 마친 AuthViewModel을 만듭니다.
+Future<AuthViewModel> _auth({
+  bool signedIn = true,
+  FakeMemberApiService? memberApi,
+  FakeAuthApiService? authApi,
+  MemoryTokenStorage? storage,
+}) async {
+  final auth = AuthViewModel(
+    authApi ?? FakeAuthApiService(),
+    memberApi ?? FakeMemberApiService(),
+    storage ?? MemoryTokenStorage(signedIn ? 'stored-token' : null),
+  );
+  await auth.restoreSession();
+  return auth;
 }
 
 RatingDto _rating(
@@ -343,12 +426,14 @@ bool _isEnabled(WidgetTester tester, Finder button) {
 
 Future<FakeTmdbMovieService> _pumpApp(
   WidgetTester tester, {
-  String location = '/start',
+  String location = '/home',
   Size size = const Size(390, 844),
   FakeTmdbMovieService? service,
   FakeSignUpService? checkService,
   FakeRatingApiService? ratingService,
-  LearningMemberSession? session,
+  FakeMemberApiService? memberApi,
+  AuthViewModel? auth,
+  bool signedIn = true,
   GenrePreference? preference,
   bool settle = true,
 }) async {
@@ -356,24 +441,26 @@ Future<FakeTmdbMovieService> _pumpApp(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
 
+  final members = memberApi ?? FakeMemberApiService();
+  final session = auth ?? await _auth(signedIn: signedIn, memberApi: members);
   final fake = service ?? _defaultService();
   await tester.pumpWidget(
     MultiProvider(
       providers: [
         Provider<TmdbMovieService>.value(value: fake),
-        ChangeNotifierProvider<LearningMemberSession>.value(
-          value: session ?? LearningMemberSession(),
-        ),
         Provider<SignUpService>.value(
           value: checkService ?? FakeSignUpService(),
         ),
         Provider<RatingApiService>.value(
           value: ratingService ?? FakeRatingApiService(),
         ),
+        Provider<MemberApiService>.value(value: members),
+        ChangeNotifierProvider<AuthViewModel>.value(value: session),
       ],
       child: MaterialApp.router(
         theme: AppTheme.light,
         routerConfig: AppRouter.createRouter(
+          auth: session,
           initialLocation: location,
           genrePreference: preference ?? InMemoryGenrePreference(),
         ),
@@ -414,7 +501,7 @@ void main() {
 
   group('SignUpScreen', () {
     testWidgets('처음에는 가입 버튼이 비활성화되어 있고 뒤로가기 버튼이 없다', (tester) async {
-      await _pumpApp(tester, location: '/register');
+      await _pumpApp(tester, location: '/register', signedIn: false);
 
       expect(find.text('회원가입'), findsOneWidget);
       expect(find.byIcon(Icons.arrow_back), findsNothing);
@@ -422,7 +509,7 @@ void main() {
     });
 
     testWidgets('잘못된 입력에는 한국어 오류 메시지를 표시한다', (tester) async {
-      await _pumpApp(tester, location: '/register');
+      await _pumpApp(tester, location: '/register', signedIn: false);
 
       await tester.enterText(_field(0), 'a');
       await tester.enterText(_field(1), 'test@');
@@ -435,13 +522,12 @@ void main() {
       expect(_isEnabled(tester, _submitButton), isFalse);
     });
 
-    testWidgets('가입 성공 시 memberId를 세션에 저장하고 영화 목록으로 이동한다', (tester) async {
-      final session = LearningMemberSession();
+    testWidgets('v7 가입 성공 시 로그인 화면으로 이동한다', (tester) async {
       final signUp = FakeSignUpService();
       await _pumpApp(
         tester,
         location: '/register',
-        session: session,
+        signedIn: false,
         checkService: signUp,
       );
 
@@ -466,14 +552,18 @@ void main() {
         'password': 'Password1!',
         'nickname': '무비러버',
       });
-      expect(session.memberId, 42);
-      expect(find.text('회원가입이 완료되었습니다. (memberId 42)'), findsOneWidget);
-      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.text('회원가입이 완료되었습니다. 로그인해 주세요.'), findsOneWidget);
+      expect(find.byType(LoginScreen), findsOneWidget);
     });
 
     testWidgets('비밀번호 400은 입력칸 에러, 409는 Snackbar로 나눠 보여준다', (tester) async {
       final signUp = FakeSignUpService();
-      await _pumpApp(tester, location: '/register', checkService: signUp);
+      await _pumpApp(
+        tester,
+        location: '/register',
+        signedIn: false,
+        checkService: signUp,
+      );
       await _fillValidSignUp(tester);
       await tester.tap(find.byType(Checkbox));
       await tester.tap(find.text('중복 확인').at(0));
@@ -502,8 +592,13 @@ void main() {
 
     testWidgets('제출 중에는 가입 버튼이 로딩이고 뒤로가기로 나갈 수 없다', (tester) async {
       final signUp = FakeSignUpService()..signUpGate = Completer<void>();
-      await _pumpApp(tester, location: '/start', checkService: signUp);
-      await tester.tap(find.text('시작하기'));
+      await _pumpApp(
+        tester,
+        location: '/login',
+        signedIn: false,
+        checkService: signUp,
+      );
+      await tester.tap(find.widgetWithText(TextButton, '회원가입'));
       await tester.pumpAndSettle();
       await _fillValidSignUp(tester);
       await tester.tap(find.byType(Checkbox));
@@ -518,7 +613,7 @@ void main() {
 
       await tester.binding.handlePopRoute();
       await tester.pump();
-      expect(find.text('회원가입'), findsOneWidget);
+      expect(find.text('가입하기'), findsOneWidget);
 
       signUp.signUpError = _apiError(409, 'COMMON409', '이미 사용 중인 닉네임입니다.');
       signUp.signUpGate!.complete();
@@ -527,11 +622,12 @@ void main() {
       // 제출이 끝나면 다시 나갈 수 있습니다.
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      expect(find.text('회원가입'), findsNothing);
+      expect(find.text('가입하기'), findsNothing);
+      expect(find.byType(LoginScreen), findsOneWidget);
     });
 
     testWidgets('비밀번호 표시 버튼으로 obscureText를 전환한다', (tester) async {
-      await _pumpApp(tester, location: '/register');
+      await _pumpApp(tester, location: '/register', signedIn: false);
 
       EditableText passwordText() => tester.widget<EditableText>(
         find.descendant(of: _field(2), matching: find.byType(EditableText)),
@@ -546,7 +642,7 @@ void main() {
     testWidgets('키보드가 열려도 Overflow가 발생하지 않는다', (tester) async {
       tester.view.viewInsets = const FakeViewPadding(bottom: 336);
       addTearDown(tester.view.resetViewInsets);
-      await _pumpApp(tester, location: '/register');
+      await _pumpApp(tester, location: '/register', signedIn: false);
 
       await tester.enterText(_field(0), 'a');
       await tester.pump();
@@ -569,6 +665,7 @@ void main() {
       await _pumpApp(
         tester,
         location: '/register',
+        signedIn: false,
         size: const Size(1280, 800),
       );
 
@@ -787,14 +884,13 @@ void main() {
   });
 
   group('화면 전환', () {
-    testWidgets('시작하기를 누르면 회원가입 화면으로 이동한다', (tester) async {
-      await _pumpApp(tester);
+    testWidgets('로그인 화면의 회원가입 버튼으로 가입 화면을 연다', (tester) async {
+      await _pumpApp(tester, location: '/login', signedIn: false);
 
-      await tester.tap(find.text('시작하기'));
+      await tester.tap(find.widgetWithText(TextButton, '회원가입'));
       await tester.pumpAndSettle();
 
-      expect(find.text('회원가입'), findsOneWidget);
-      expect(find.byIcon(Icons.arrow_back), findsNothing);
+      expect(find.text('가입하기'), findsOneWidget);
     });
 
     testWidgets('홈은 Popular 결과 중 5개만 보여주고 상세로 TMDB id를 넘긴다', (tester) async {
@@ -951,24 +1047,11 @@ void main() {
       expect(find.text('즐겨찾기에 추가했어요.'), findsOneWidget);
     });
 
-    testWidgets('회원가입 전에는 평점 버튼이 비활성화된다', (tester) async {
-      await _pumpApp(tester, location: '/movies/1');
-
-      final button = find.ancestor(
-        of: find.text('가입 후 평점 남기기'),
-        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
-      );
-      expect(_isEnabled(tester, button), isFalse);
-    });
-
-    testWidgets('정수 별점과 코멘트를 TMDB id와 함께 v6로 등록한다', (tester) async {
+    testWidgets('정수 별점과 코멘트를 TMDB id로 v7 등록하고 result로 화면을 갱신한다', (
+      tester,
+    ) async {
       final ratings = FakeRatingApiService();
-      await _pumpApp(
-        tester,
-        location: '/movies/1',
-        ratingService: ratings,
-        session: LearningMemberSession()..setMemberId(42),
-      );
+      await _pumpApp(tester, location: '/movies/1', ratingService: ratings);
 
       await tester.tap(find.text('평점 남기기'));
       await tester.pumpAndSettle();
@@ -1010,12 +1093,7 @@ void main() {
     testWidgets('등록 409면 Dialog를 유지하고 서버 문구를 보여준다', (tester) async {
       final ratings = FakeRatingApiService()
         ..writeError = _apiError(409, 'COMMON409', '이미 이 영화에 평점을 남기셨습니다.');
-      await _pumpApp(
-        tester,
-        location: '/movies/1',
-        ratingService: ratings,
-        session: LearningMemberSession()..setMemberId(42),
-      );
+      await _pumpApp(tester, location: '/movies/1', ratingService: ratings);
 
       await tester.tap(find.text('평점 남기기'));
       await tester.pumpAndSettle();
@@ -1040,11 +1118,7 @@ void main() {
     });
 
     testWidgets('다시 선택하기를 누르면 평점이 초기화된다', (tester) async {
-      await _pumpApp(
-        tester,
-        location: '/movies/1',
-        session: LearningMemberSession()..setMemberId(42),
-      );
+      await _pumpApp(tester, location: '/movies/1');
 
       await tester.tap(find.text('평점 남기기'));
       await tester.pumpAndSettle();
@@ -1129,7 +1203,12 @@ void main() {
 
     testWidgets('통신 중에는 버튼이 비활성화되고 인디케이터만 보인다', (tester) async {
       final service = FakeSignUpService()..gate = Completer<void>();
-      await _pumpApp(tester, location: '/register', checkService: service);
+      await _pumpApp(
+        tester,
+        location: '/register',
+        signedIn: false,
+        checkService: service,
+      );
 
       await tester.enterText(_field(0), '새닉네임');
       await tester.pump();
@@ -1162,7 +1241,7 @@ void main() {
     });
 
     testWidgets('서버가 중복이라고 하면 입력창이 에러가 되고 버튼이 막힌다', (tester) async {
-      await _pumpApp(tester, location: '/register');
+      await _pumpApp(tester, location: '/register', signedIn: false);
 
       await tester.enterText(_field(1), 'test@umc.com');
       await tester.pump();
@@ -1210,97 +1289,365 @@ void main() {
     });
   });
 
-  group('6주차 내가 등록한 평점', () {
-    test('평점과 TMDB 영화를 묶고, 못 찾은 영화는 안내 문구와 함께 남긴다', () async {
-      final viewModel = MyRatingsViewModel(
-        FakeRatingApiService(ratings: [_rating(2, 1), _rating(1, 999)]),
-        _defaultService(),
-        1,
-      );
-
-      await viewModel.load();
-
-      expect(viewModel.status, MyRatingsLoadStatus.success);
-      expect(viewModel.ratings.first.movie?.title, '영화 1');
-      expect(viewModel.ratings.last.movie, isNull);
-      expect(viewModel.message, contains('일부 영화 정보'));
+  group('8주차 인증 상태', () {
+    test('authRedirect는 상태별로 스플래시·로그인·홈만 허용한다', () {
+      expect(authRedirect(AuthStatus.initializing, '/home'), '/start');
+      expect(authRedirect(AuthStatus.retryRequired, '/start'), isNull);
+      expect(authRedirect(AuthStatus.signedOut, '/my'), '/login');
+      expect(authRedirect(AuthStatus.signedOut, '/register'), isNull);
+      expect(authRedirect(AuthStatus.authenticating, '/login'), isNull);
+      expect(authRedirect(AuthStatus.signedIn, '/login'), '/home');
+      expect(authRedirect(AuthStatus.signedIn, '/my/ratings'), isNull);
     });
 
-    test('영화 상세 조회가 실패해도 평점 목록은 남긴다', () async {
-      final tmdb = _defaultService()..failMovieDetail = true;
-      final viewModel = MyRatingsViewModel(
-        FakeRatingApiService(ratings: [_rating(1, 1)]),
-        tmdb,
-        1,
-      );
+    test('저장된 토큰은 GET me 검증 뒤에만 signedIn이 된다', () async {
+      final members = FakeMemberApiService();
+      final auth = await _auth(memberApi: members);
 
-      await viewModel.load();
+      expect(auth.status, AuthStatus.signedIn);
+      expect(auth.member?.nickname, '무비러버');
+      expect(members.fetchCalls, 1);
 
-      expect(viewModel.status, MyRatingsLoadStatus.success);
-      expect(viewModel.ratings, hasLength(1));
+      final empty = await _auth(signedIn: false);
+      expect(empty.status, AuthStatus.signedOut);
     });
 
-    test('빈 배열은 Empty, 404·400은 서로 다른 Error 문구', () async {
-      final empty = MyRatingsViewModel(
-        FakeRatingApiService(),
-        _defaultService(),
-        1,
+    test('네트워크 실패는 재시도 상태로 두고 토큰을 지우지 않는다', () async {
+      final storage = MemoryTokenStorage('stored-token');
+      final auth = await _auth(
+        storage: storage,
+        memberApi: FakeMemberApiService()..fetchError = _networkError(),
       );
-      await empty.load();
-      expect(empty.status, MyRatingsLoadStatus.empty);
 
-      final notFound = MyRatingsViewModel(
-        FakeRatingApiService()..failStatus = 404,
-        _defaultService(),
-        1,
-      );
-      await notFound.load();
-      expect(notFound.status, MyRatingsLoadStatus.error);
-      expect(notFound.message, '존재하지 않는 회원입니다.');
+      expect(auth.status, AuthStatus.retryRequired);
+      expect(storage.token, 'stored-token');
 
-      final badRequest = MyRatingsViewModel(
-        FakeRatingApiService()..failStatus = 400,
-        _defaultService(),
-        1,
-      );
-      await badRequest.load();
-      expect(badRequest.message, 'memberId 형식을 다시 확인해 주세요.');
+      final broken = MemoryTokenStorage('x')..failRead = true;
+      final failed = await _auth(storage: broken);
+      expect(failed.status, AuthStatus.retryRequired);
+      expect(failed.message, contains('인증 저장소'));
     });
 
-    testWidgets('마이페이지에서 진입하면 하단 탭 없이 평점 카드를 보여준다', (tester) async {
-      await _pumpApp(
-        tester,
-        location: '/my',
-        size: const Size(390, 1600),
-        session: LearningMemberSession()..setMemberId(1),
-        ratingService: FakeRatingApiService(
-          ratings: [
-            _rating(2, 1, comment: '다시 봐도 좋다'),
-            _rating(1, 2, comment: null),
-          ],
-        ),
+    test('만료 토큰(AUTH401_4)이면 토큰을 지우고 만료 안내를 켠다', () async {
+      final storage = MemoryTokenStorage('old-token');
+      final auth = await _auth(
+        storage: storage,
+        memberApi: FakeMemberApiService()..fetchError = _authError('AUTH401_4'),
       );
 
-      await tester.tap(find.text('내가 등록한 평점'));
-      await tester.pumpAndSettle();
+      expect(auth.status, AuthStatus.signedOut);
+      expect(auth.sessionExpired, isTrue);
+      expect(storage.token, isNull);
+    });
 
-      expect(find.byType(NavigationBar), findsNothing);
-      expect(find.text('영화 1'), findsOneWidget);
-      expect(find.text('다시 봐도 좋다'), findsOneWidget);
-      expect(find.text('2026.11.15 등록'), findsNWidgets(2));
+    test('로그인 실패 AUTH401_1은 Form 오류이고 만료가 아니다', () async {
+      final authApi = FakeAuthApiService()..error = _authError('AUTH401_1');
+      final storage = MemoryTokenStorage();
+      final auth = await _auth(
+        signedIn: false,
+        authApi: authApi,
+        storage: storage,
+      );
 
-      await tester.tap(find.byIcon(Icons.arrow_back));
-      await tester.pumpAndSettle();
-      expect(find.byType(NavigationBar), findsOneWidget);
+      await auth.login('movie@example.com', 'wrong');
+
+      expect(auth.status, AuthStatus.signedOut);
+      expect(auth.message, '이메일 또는 비밀번호를 확인해 주세요.');
+      expect(auth.sessionExpired, isFalse);
+      expect(storage.token, isNull);
+
+      authApi.error = null;
+      await auth.login('movie@example.com', 'Password1!');
+      expect(auth.status, AuthStatus.signedIn);
+      expect(storage.token, 'new-token');
+    });
+
+    test('로그아웃 뒤 늦게 도착한 GET me는 반영하지 않는다', () async {
+      final members = FakeMemberApiService();
+      final auth = await _auth(signedIn: false, memberApi: members);
+      await auth.login('movie@example.com', 'Password1!');
+
+      members.fetchGate = Completer<void>();
+      final loading = auth.loadMember();
+      await auth.logout();
+      members.fetchGate!.complete();
+      await loading;
+
+      expect(auth.member, isNull);
+      expect(auth.status, AuthStatus.signedOut);
+      expect(auth.sessionExpired, isFalse);
     });
   });
 
-  group('7주차 요청 Model', () {
+  group('8주차 AuthInterceptor', () {
+    Future<Map<String, dynamic>> headersFor(
+      String url, {
+      TokenStorage? storage,
+    }) async {
+      final dio = Dio();
+      final adapter = _CaptureAdapter();
+      dio.httpClientAdapter = adapter;
+      dio.interceptors.add(
+        AuthInterceptor(
+          storage ?? MemoryTokenStorage('secret-jwt'),
+          host: 'workbook.devnoco.com',
+        ),
+      );
+      await dio.get(url, options: Options(headers: {'Authorization': 'old'}));
+      return adapter.lastHeaders;
+    }
+
+    test('워크북 보호 path에만 Bearer를 붙이고 다른 host·공개 path에는 붙이지 않는다', () async {
+      expect(
+        (await headersFor(
+          'https://workbook.devnoco.com/v7/ratings/3',
+        ))['Authorization'],
+        'Bearer secret-jwt',
+      );
+      expect(
+        (await headersFor(
+          'https://workbook.devnoco.com/v7/members/me',
+        ))['Authorization'],
+        'Bearer secret-jwt',
+      );
+      expect(
+        (await headersFor(
+          'https://workbook.devnoco.com/v7/members/1/ratings',
+        ))['Authorization'],
+        isNull,
+      );
+      expect(
+        (await headersFor(
+          'https://api.themoviedb.org/v7/ratings',
+        ))['Authorization'],
+        isNull,
+      );
+    });
+
+    test('저장소를 못 읽으면 서버 401이 아닌 다른 오류로 거절한다', () async {
+      await expectLater(
+        headersFor(
+          'https://workbook.devnoco.com/v7/ratings',
+          storage: MemoryTokenStorage('x')..failRead = true,
+        ),
+        throwsA(
+          isA<DioException>().having(
+            (e) => e.type,
+            'type',
+            DioExceptionType.unknown,
+          ),
+        ),
+      );
+    });
+  });
+
+  group('8주차 로그인·세션 화면', () {
+    setUp(() {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.empty();
+    });
+
+    testWidgets('세션 확인 실패면 스플래시에서 다시 시도해 홈으로 간다', (tester) async {
+      final members = FakeMemberApiService()..fetchError = _networkError();
+      final auth = await _auth(memberApi: members);
+      await _pumpApp(
+        tester,
+        location: '/start',
+        auth: auth,
+        memberApi: members,
+      );
+
+      expect(find.text('FLUTTER 8주차'), findsOneWidget);
+      expect(find.text('로그인 상태를 확인하지 못했어요. 다시 시도해 주세요.'), findsOneWidget);
+
+      members.fetchError = null;
+      await tester.tap(find.text('다시 시도'));
+      await tester.pumpAndSettle();
+      expect(find.text(_homeHeadline), findsOneWidget);
+    });
+
+    testWidgets('로그인 실패는 Form 문구, 성공하면 홈으로 이동한다', (tester) async {
+      final authApi = FakeAuthApiService()..error = _authError('AUTH401_1');
+      final auth = await _auth(signedIn: false, authApi: authApi);
+      await _pumpApp(tester, location: '/my', auth: auth);
+      expect(find.byType(LoginScreen), findsOneWidget); // 보호 화면 차단
+
+      await tester.enterText(
+        find.byType(TextFormField).at(0),
+        'movie@example.com',
+      );
+      await tester.enterText(find.byType(TextFormField).at(1), 'wrong');
+      await tester.tap(find.widgetWithText(ElevatedButton, '로그인'));
+      await tester.pumpAndSettle();
+      expect(find.text('이메일 또는 비밀번호를 확인해 주세요.'), findsOneWidget);
+      expect(find.text('로그인이 만료됐어요. 다시 로그인해 주세요.'), findsNothing);
+
+      authApi.error = null;
+      await tester.tap(find.widgetWithText(ElevatedButton, '로그인'));
+      await tester.pumpAndSettle();
+      expect(find.text(_homeHeadline), findsOneWidget);
+      expect(authApi.requests.last['email'], 'movie@example.com');
+    });
+
+    testWidgets('이메일 저장을 켜면 이메일만 저장해 다음에 채운다', (tester) async {
+      final auth = await _auth(signedIn: false);
+      await _pumpApp(tester, location: '/login', auth: auth);
+
+      await tester.enterText(
+        find.byType(TextFormField).at(0),
+        'movie@example.com',
+      );
+      await tester.enterText(find.byType(TextFormField).at(1), 'Password1!');
+      await tester.tap(find.text('이메일 저장'));
+      await tester.tap(find.widgetWithText(ElevatedButton, '로그인'));
+      await tester.pumpAndSettle();
+
+      final prefs = SharedPreferencesAsyncPlatform.instance!;
+      final saved = await prefs.getString(
+        LoginScreen.savedEmailKey,
+        const SharedPreferencesOptions(),
+      );
+      expect(saved, 'movie@example.com');
+      final all = await prefs.getPreferences(
+        const GetPreferencesParameters(filter: PreferencesFilters()),
+        const SharedPreferencesOptions(),
+      );
+      expect(all.values, isNot(contains('Password1!')));
+
+      await auth.logout();
+      await tester.pumpAndSettle();
+      final emailField = tester.widget<EditableText>(
+        find.descendant(
+          of: find.byType(TextFormField).at(0),
+          matching: find.byType(EditableText),
+        ),
+      );
+      expect(emailField.controller.text, 'movie@example.com');
+    });
+
+    testWidgets('마이페이지는 내 정보를 보여주고 로그아웃하면 만료 안내 없이 로그인으로 간다', (tester) async {
+      final storage = MemoryTokenStorage('stored-token');
+      final auth = await _auth(storage: storage);
+      await _pumpApp(
+        tester,
+        location: '/my',
+        auth: auth,
+        size: const Size(390, 1400),
+      );
+
+      expect(find.text('무비러버'), findsOneWidget);
+      expect(find.text('movie@example.com'), findsOneWidget);
+      expect(find.text('2026.10.10 가입'), findsOneWidget);
+
+      await tester.tap(find.text('로그아웃'));
+      await tester.pumpAndSettle();
+      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(storage.token, isNull);
+      expect(find.text('로그인이 만료됐어요. 다시 로그인해 주세요.'), findsNothing);
+    });
+
+    testWidgets('보호 요청 만료면 로그인 화면에서 Snackbar로 한 번 안내한다', (tester) async {
+      final auth = await _auth();
+      await _pumpApp(tester, location: '/my', auth: auth);
+
+      await auth.expireSession();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(find.text('로그인이 만료됐어요. 다시 로그인해 주세요.'), findsOneWidget);
+      expect(auth.sessionExpired, isFalse);
+    });
+
+    testWidgets('내 정보 로딩 실패면 재시도 버튼을 보여준다', (tester) async {
+      final members = FakeMemberApiService();
+      final auth = await _auth(signedIn: false, memberApi: members);
+      await auth.login('movie@example.com', 'Password1!');
+      members.fetchError = _networkError();
+      await _pumpApp(tester, location: '/my', auth: auth, memberApi: members);
+
+      expect(find.text('내 정보를 불러오지 못했어요.'), findsOneWidget);
+      expect(auth.status, AuthStatus.signedIn); // 네트워크 실패로 로그아웃하지 않음
+
+      members.fetchError = null;
+      await tester.tap(find.text('다시 시도'));
+      await tester.pumpAndSettle();
+      expect(find.text('무비러버'), findsOneWidget);
+    });
+  });
+
+  group('8주차 프로필 수정', () {
+    test('2~12자 검증, 같은 닉네임은 요청 없이 완료, 409는 입력 오류', () async {
+      final members = FakeMemberApiService();
+      final auth = await _auth(memberApi: members);
+      final viewModel = EditProfileViewModel(members, auth);
+
+      expect(await viewModel.save('a'), isFalse);
+      expect(viewModel.nicknameError, '닉네임은 2~12자로 입력해 주세요.');
+      expect(await viewModel.save(' 무비러버 '), isTrue);
+      expect(members.nicknameUpdates, isEmpty);
+
+      members.updateError = _apiError(409, 'MEMBER409_1', '이미 사용 중인 닉네임입니다.');
+      expect(await viewModel.save('영화광'), isFalse);
+      expect(viewModel.nicknameError, '이미 사용 중인 닉네임이에요.');
+
+      members.updateError = _networkError();
+      expect(await viewModel.save('영화광'), isFalse);
+      expect(viewModel.message, contains('네트워크'));
+      expect(auth.status, AuthStatus.signedIn);
+
+      members.updateError = _authError('AUTH401_3');
+      expect(await viewModel.save('영화광'), isFalse);
+      expect(auth.status, AuthStatus.signedOut);
+    });
+
+    testWidgets('저장하면 마이페이지에 새 닉네임이 바로 보인다', (tester) async {
+      final members = FakeMemberApiService();
+      await _pumpApp(
+        tester,
+        location: '/my',
+        memberApi: members,
+        size: const Size(390, 1400),
+      );
+
+      await tester.tap(find.text('프로필 수정'));
+      await tester.pumpAndSettle();
+      expect(find.byType(NavigationBar), findsNothing);
+
+      await tester.enterText(find.byType(TextField).last, '새닉네임');
+      await tester.tap(find.widgetWithText(ElevatedButton, '저장'));
+      await tester.pumpAndSettle();
+
+      expect(members.nicknameUpdates, ['새닉네임']);
+      expect(find.text('프로필을 수정했어요.'), findsOneWidget);
+      expect(find.text('새닉네임'), findsOneWidget);
+    });
+
+    testWidgets('변경 내용이 있으면 뒤로가기 전에 확인한다', (tester) async {
+      await _pumpApp(tester, location: '/my', size: const Size(390, 1400));
+      await tester.tap(find.text('프로필 수정'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField).last, '바뀐닉네임');
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      expect(find.text('수정을 취소할까요?'), findsOneWidget);
+
+      await tester.tap(find.text('계속 수정'));
+      await tester.pumpAndSettle();
+      expect(find.text('바뀐닉네임'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, '나가기'));
+      await tester.pumpAndSettle();
+      expect(find.text('내 프로필'), findsOneWidget);
+    });
+  });
+
+  group('8주차 v7 평점', () {
     test('정수 1~5만 허용하고 빈 코멘트는 body에서 뺀다', () {
       expect(validateServerScore(3), 3);
       expect(() => validateServerScore(3.5), throwsArgumentError);
-      expect(() => validateServerScore(0), throwsArgumentError);
-
       expect(
         const CreateRatingRequest(
           movieId: 550,
@@ -1311,79 +1658,80 @@ void main() {
       );
     });
 
-    test('v6 오류 body를 공통 응답으로 읽고 code로 재조회 여부를 정한다', () {
+    test('v7 공통 응답에서 Rating 객체를 읽고 오류 code를 구분한다', () {
+      final rating = parseRatingResult({
+        'isSuccess': true,
+        'code': 'COMMON201',
+        'message': '평점을 등록했습니다.',
+        'result': {
+          'ratingId': 7,
+          'movieId': 550,
+          'score': 5,
+          'comment': null,
+          'createdAt': '2026-09-06T12:14:03.000Z',
+          'updatedAt': '2026-09-06T12:14:03.000Z',
+        },
+      });
+      expect(rating.ratingId, 7);
+      expect(rating.comment, isNull);
+
       final forbidden = _apiError(
         403,
-        'COMMON403',
+        'RATING403_1',
         '본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.',
       );
       expect(writeErrorMessage(forbidden), '본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.');
-      expect(shouldRefreshAfterRatingError(forbidden), isTrue);
-
-      final conflict = _apiError(409, 'COMMON409', '이미 이 영화에 평점을 남기셨습니다.');
-      expect(shouldRefreshAfterRatingError(conflict), isFalse);
-      expect(writeErrorMessage(_networkError()), contains('잠시 후 다시 시도'));
-    });
-  });
-
-  group('7주차 내가 등록한 평점 수정·삭제', () {
-    MyRatingsViewModel viewModelWith(FakeRatingApiService service) =>
-        MyRatingsViewModel(service, _defaultService(), 42);
-
-    test('수정은 comment까지 보내고 성공 뒤 목록을 다시 읽는다', () async {
-      final service = FakeRatingApiService(ratings: [_rating(1, 1)]);
-      final viewModel = viewModelWith(service);
-      await viewModel.load();
-
-      await viewModel.updateRating(ratingId: 1, score: 2, comment: null);
-
-      expect(service.updated.single, (ratingId: 1, score: 2, comment: null));
-      expect(service.fetchCalls, 2);
-      expect(viewModel.ratings.single.rating.score, 2);
-      expect(viewModel.refreshWarning, isNull);
+      expect(isSessionExpiredError(forbidden), isFalse);
+      expect(isSessionExpiredError(_authError('AUTH401_2')), isTrue);
+      expect(isSessionExpiredError(_authError('AUTH401_1')), isFalse);
     });
 
-    test('403 쓰기 실패는 다시 던지고 목록을 서버와 맞춘다', () async {
-      final service = FakeRatingApiService(ratings: [_rating(1, 1)])
-        ..writeError = _apiError(
-          403,
-          'COMMON403',
-          '본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.',
-        );
-      final viewModel = viewModelWith(service);
+    test('수정은 result로 카드를 교체하고, 404는 목록에서 빼고, 403은 로그인을 유지한다', () async {
+      final service = FakeRatingApiService();
+      final auth = await _auth();
+      auth.addSessionRating(_rating(1, 1, score: 2));
+      auth.addSessionRating(_rating(2, 2));
+      final viewModel = MyRatingsViewModel(service, _defaultService(), auth);
       await viewModel.load();
 
+      await viewModel.updateRating(ratingId: 1, score: 5, comment: null);
+      expect(service.updated.single, (ratingId: 1, score: 5, comment: null));
+      expect(
+        viewModel.ratings
+            .firstWhere((e) => e.rating.ratingId == 1)
+            .rating
+            .score,
+        5,
+      );
+
+      service.writeError = _apiError(
+        403,
+        'RATING403_1',
+        '본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.',
+      );
       await expectLater(
-        viewModel.updateRating(ratingId: 1, score: 5),
+        viewModel.deleteRating(2),
         throwsA(isA<DioException>()),
       );
-      expect(service.fetchCalls, 2);
-    });
+      expect(auth.status, AuthStatus.signedIn);
+      expect(viewModel.ratings, hasLength(2));
 
-    test('저장 성공 뒤 GET만 실패하면 실패로 던지지 않고 재조회 안내를 남긴다', () async {
-      final service = FakeRatingApiService(ratings: [_rating(1, 1)])
-        ..failFetchAfterWrite = true;
-      final viewModel = viewModelWith(service);
-      await viewModel.load();
-
-      await viewModel.deleteRating(1);
-
-      expect(service.deleted, [1]);
-      expect(viewModel.status, MyRatingsLoadStatus.error);
-      expect(viewModel.refreshWarning, contains('저장은 완료됐지만'));
-
-      service.failStatus = null;
-      await viewModel.retryLoad();
-      expect(viewModel.status, MyRatingsLoadStatus.empty);
-      expect(viewModel.refreshWarning, isNull);
-      expect(service.deleted, [1]); // DELETE를 다시 보내지 않습니다.
+      service.writeError = _apiError(404, 'RATING404_1', '해당 평점을 찾을 수 없습니다.');
+      await expectLater(
+        viewModel.deleteRating(2),
+        throwsA(isA<DioException>()),
+      );
+      expect(viewModel.ratings.map((e) => e.rating.ratingId), [1]);
     });
 
     test('다중 삭제 중 일부만 실패하면 실패한 항목만 선택에 남긴다', () async {
-      final service = FakeRatingApiService(
-        ratings: [_rating(3, 1), _rating(2, 2), _rating(1, 1)],
-      )..failDeleteIds.add(2);
-      final viewModel = viewModelWith(service);
+      final service = FakeRatingApiService()
+        ..failDeleteIds[2] = _apiError(403, 'RATING403_1', '권한 없음');
+      final auth = await _auth();
+      for (final id in [1, 2, 3]) {
+        auth.addSessionRating(_rating(id, 1));
+      }
+      final viewModel = MyRatingsViewModel(service, _defaultService(), auth);
       await viewModel.load();
 
       viewModel.startEditing();
@@ -1394,117 +1742,121 @@ void main() {
       expect(service.deleted, [3]);
       expect(viewModel.selectedRatingIds, {2});
       expect(viewModel.isEditing, isTrue);
-      expect(viewModel.isDeletingSelected, isFalse);
       expect(viewModel.message, contains('1개 항목을 삭제하지 못했습니다'));
       expect(viewModel.ratings.map((e) => e.rating.ratingId), [2, 1]);
     });
-  });
 
-  group('7주차 내가 등록한 평점 화면', () {
-    Future<FakeRatingApiService> pumpMyRatings(
-      WidgetTester tester,
-      List<RatingDto> ratings,
-    ) async {
-      final service = FakeRatingApiService(ratings: ratings);
+    testWidgets('등록 401이면 세션을 정리하고 로그인 화면으로 보낸다', (tester) async {
+      final ratings = FakeRatingApiService()
+        ..writeError = _authError('AUTH401_4');
+      await _pumpApp(tester, location: '/movies/1', ratingService: ratings);
+
+      await tester.tap(find.text('평점 남기기'));
+      await tester.pumpAndSettle();
+      final star = find
+          .descendant(
+            of: find.byType(Dialog),
+            matching: find.byIcon(Icons.star),
+          )
+          .at(4);
+      await tester.tapAt(tester.getCenter(star) + const Offset(10, 0));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(ElevatedButton, '확인'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(find.text('로그인이 만료됐어요. 다시 로그인해 주세요.'), findsOneWidget);
+    });
+
+    testWidgets('상세에서 등록한 평점을 내가 등록한 평점에서 수정·삭제한다', (tester) async {
+      final ratings = FakeRatingApiService();
+      final auth = await _auth();
+      auth.addSessionRating(_rating(9, 999, comment: '처음 감상', score: 2));
       await _pumpApp(
         tester,
         location: '/my/ratings',
+        auth: auth,
+        ratingService: ratings,
         size: const Size(390, 1600),
-        session: LearningMemberSession()..setMemberId(42),
-        ratingService: service,
       );
-      return service;
-    }
 
-    testWidgets('회원가입 전에는 학습용 회원가입 안내를 보여준다', (tester) async {
-      await _pumpApp(tester, location: '/my/ratings');
-
-      expect(find.text('학습용 회원가입이 필요합니다.'), findsOneWidget);
-    });
-
-    testWidgets('수정 버튼은 기존 별점·코멘트를 채운 Dialog를 열고 저장 뒤 재조회한다', (tester) async {
-      final service = await pumpMyRatings(tester, [
-        _rating(1, 1, comment: '처음 감상', score: 2),
-      ]);
+      // TMDB에 없는 영화도 평점은 남기고 placeholder로 표시합니다.
+      expect(find.text('영화 정보를 찾을 수 없어요'), findsOneWidget);
+      expect(find.text('이번 로그인에서 등록한 평점 1개'), findsOneWidget);
 
       await tester.tap(find.byTooltip('수정'));
       await tester.pumpAndSettle();
-
       final field = find.descendant(
         of: find.byType(Dialog),
         matching: find.byType(TextField),
       );
       expect(tester.widget<TextField>(field).controller!.text, '처음 감상');
-      expect(
-        _isEnabled(tester, find.widgetWithText(ElevatedButton, '확인')),
-        isTrue,
-      );
-
       await tester.enterText(field, '다시 보니 좋다');
       await tester.tap(find.widgetWithText(ElevatedButton, '확인'));
       await tester.pumpAndSettle();
-
-      expect(service.updated.single.comment, '다시 보니 좋다');
-      expect(service.updated.single.score, 2);
-      expect(find.byType(Dialog), findsNothing);
+      expect(ratings.updated.single, (
+        ratingId: 9,
+        score: 2,
+        comment: '다시 보니 좋다',
+      ));
       expect(find.text('다시 보니 좋다'), findsOneWidget);
-    });
-
-    testWidgets('삭제는 확인 Dialog에서 취소하면 요청하지 않고, 삭제하면 Empty가 된다', (tester) async {
-      final service = await pumpMyRatings(tester, [_rating(1, 1)]);
 
       await tester.tap(find.byTooltip('삭제'));
       await tester.pumpAndSettle();
-      expect(find.text('평점을 삭제할까요?'), findsOneWidget);
       await tester.tap(find.text('취소'));
       await tester.pumpAndSettle();
-      expect(service.deleted, isEmpty);
+      expect(ratings.deleted, isEmpty);
 
       await tester.tap(find.byTooltip('삭제'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ElevatedButton, '삭제'));
       await tester.pumpAndSettle();
-
-      expect(service.deleted, [1]);
-      expect(find.text('아직 등록한 평점이 없어요.'), findsOneWidget);
+      expect(ratings.deleted, [9]);
+      expect(find.textContaining('이번 로그인에서 등록한 평점이 없어요'), findsOneWidget);
     });
 
     testWidgets('편집 모드에서 선택한 평점을 오버레이와 함께 한 번에 삭제한다', (tester) async {
-      final service = await pumpMyRatings(tester, [
-        _rating(2, 1, comment: '둘'),
-        _rating(1, 2, comment: '하나'),
-      ]);
+      final ratings = FakeRatingApiService();
+      final auth = await _auth();
+      auth.addSessionRating(_rating(1, 2, comment: '하나'));
+      auth.addSessionRating(_rating(2, 1, comment: '둘'));
+      await _pumpApp(
+        tester,
+        location: '/my/ratings',
+        auth: auth,
+        ratingService: ratings,
+        size: const Size(390, 1600),
+      );
 
       await tester.tap(find.text('편집'));
       await tester.pumpAndSettle();
       expect(find.text('0개 선택'), findsOneWidget);
-      expect(find.byTooltip('수정'), findsNothing);
-      final deleteSelected = find.widgetWithText(ElevatedButton, '선택한 0개 삭제');
-      expect(_isEnabled(tester, deleteSelected), isFalse);
+      expect(
+        _isEnabled(tester, find.widgetWithText(ElevatedButton, '선택한 0개 삭제')),
+        isFalse,
+      );
 
       await tester.tap(find.byType(Checkbox).first);
       await tester.tap(find.byType(Checkbox).last);
       await tester.pump();
-      expect(find.text('2개 선택'), findsOneWidget);
 
-      service.writeGate = Completer<void>();
+      ratings.writeGate = Completer<void>();
       await tester.tap(find.widgetWithText(ElevatedButton, '선택한 2개 삭제'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(ElevatedButton, '삭제'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 
-      // 확인 Dialog는 바로 닫히고 화면 오버레이가 삭제를 이어받습니다.
       expect(find.byType(AlertDialog), findsNothing);
       expect(find.byType(ModalBarrier), findsWidgets);
       await tester.binding.handlePopRoute();
       await tester.pump();
       expect(find.text('내가 등록한 평점'), findsOneWidget);
 
-      service.writeGate!.complete();
+      ratings.writeGate!.complete();
       await tester.pumpAndSettle();
-      expect(service.deleted, [2, 1]);
-      expect(find.text('아직 등록한 평점이 없어요.'), findsOneWidget);
+      expect(ratings.deleted, [2, 1]);
+      expect(auth.sessionRatings, isEmpty);
     });
   });
 }

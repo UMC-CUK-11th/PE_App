@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -58,7 +59,8 @@ class LoginPrompt extends StatelessWidget {
           style: AppTextStyles.bodySmall.copyWith(color: AppColors.black),
         ),
         TextButton(
-          onPressed: () {},
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/login'),
           style: TextButton.styleFrom(foregroundColor: AppColors.violet),
           child: const Text('로그인'),
         ),
