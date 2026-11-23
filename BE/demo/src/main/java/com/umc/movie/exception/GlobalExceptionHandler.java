@@ -73,7 +73,7 @@ public class GlobalExceptionHandler {
             .body(ApiResponse.error("COMMON405", "지원하지 않는 요청 방식입니다."));
     }
     /**
-     * 저장 중 발생한 중복 키 위반을 회원 또는 평점의 409 오류로 변환합니다.
+     * 저장 중 발생한 중복 키 위반을 회원, 평점 또는 즐겨찾기의 409 오류로 변환합니다.
      * MySQL 1062와 H2 SQLState 23505를 중복으로 판별하며, 그 외 무결성 오류는 500입니다.
      * 가입 충돌 종류는 제약 이름으로 구분하고, 이름이 불명확하면 서비스 트랜잭션이
      * 롤백된 뒤 요청 속성의 이메일과 닉네임으로 재조회합니다. DB 원문은 응답하지 않습니다.
@@ -108,6 +108,9 @@ public class GlobalExceptionHandler {
         }
         if (constraint.contains("rating_member_movie")) {
             return response(409, "RATING409_1", "이미 이 영화에 평점을 남기셨습니다.");
+        }
+        if (constraint.contains("favorite_member_movie")) {
+            return response(409, "FAVORITE409_1", "이미 이 영화를 즐겨찾기하셨습니다.");
         }
         return response(500, "COMMON500", "저장 중 오류가 발생했습니다.");
     }

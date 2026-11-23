@@ -6,6 +6,7 @@ import 'services/member_check_service.dart';
 import 'services/movie_log_client.dart';
 import 'view_models/signup_view_model.dart';
 import 'view_models/learning_member_session.dart';
+import 'view_models/auth_session.dart';
 import 'widgets/movielog_button.dart';
 
 import 'theme/app_colors.dart';
@@ -103,12 +104,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid || !_canSubmit) return;
     FocusScope.of(context).unfocus();
-    final session = context.read<LearningMemberSession>();
+    final auth = context.read<AuthSession?>();
+    final session = context.read<LearningMemberSession?>();
     final id = await _viewModel.submit(_passwordController.text);
     if (!mounted) return;
     if (id != null) {
-      session.start(id);
-      context.go('/movies');
+      if (auth == null) {
+        session?.start(id);
+        context.go('/movies');
+      } else {
+        context.go('/login');
+      }
     } else if (_viewModel.snackbarMessage case final message?) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
@@ -493,7 +499,9 @@ class _SignUpActions extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             TextButton(
-              onPressed: () => debugPrint('로그인 버튼을 눌렀습니다.'),
+              onPressed: context.read<AuthSession?>() == null
+                  ? null
+                  : () => context.go('/login'),
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.violet,
                 padding: EdgeInsets.zero,

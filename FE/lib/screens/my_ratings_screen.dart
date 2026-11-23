@@ -8,6 +8,7 @@ import '../models/rating_dto.dart';
 import '../widgets/delete_ratings_dialog.dart';
 import '../widgets/rating_dialog.dart';
 import '../view_models/my_ratings_view_model.dart';
+import '../view_models/auth_session.dart';
 import '../widgets/common_app_bar.dart';
 import '../widgets/movielog_button.dart';
 import '../widgets/tmdb_poster.dart';
@@ -29,6 +30,9 @@ class _MyRatingsScreenState extends State<MyRatingsScreen> {
   });
 
   Future<void> _edit(MyRatingsViewModel vm, RatingDto rating) async {
+    final session = context.read<AuthSession?>();
+    final generation = session?.generation;
+    ApiFailure? accessFailure;
     final saved = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -36,12 +40,21 @@ class _MyRatingsScreenState extends State<MyRatingsScreen> {
         initialRating: rating.score.toDouble(),
         initialComment: rating.comment,
         onSubmit: (input) => vm.update(rating.ratingId, input),
+        onAccessFailure: session == null
+            ? null
+            : (error) => accessFailure = error,
       ),
     );
-    if (mounted && saved == true) _notify('평점을 수정했습니다.');
+    if (!mounted || (generation != null && !session!.isCurrent(generation))) {
+      return;
+    }
+    final message = saved == true ? '평점을 수정했습니다.' : accessFailure?.message;
+    if (message != null) _notify(message);
   }
 
   Future<void> _delete(MyRatingsViewModel vm, Set<int> ids) async {
+    final session = context.read<AuthSession?>();
+    final generation = session?.generation;
     final failures = await showDialog<Map<int, ApiFailure>>(
       context: context,
       barrierDismissible: false,
@@ -50,7 +63,11 @@ class _MyRatingsScreenState extends State<MyRatingsScreen> {
         onDelete: () => vm.deleteSelected(ids),
       ),
     );
-    if (!mounted || failures == null) return;
+    if (!mounted ||
+        failures == null ||
+        (generation != null && !session!.isCurrent(generation))) {
+      return;
+    }
     setState(() {
       _selected.retainAll(failures.keys);
       if (_selected.isEmpty) _selecting = false;
@@ -72,6 +89,7 @@ class _MyRatingsScreenState extends State<MyRatingsScreen> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<MyRatingsViewModel>();
+    final tokenSession = context.watch<AuthSession?>();
     final activeSelection = _selected.intersection(
       vm.ratings.map((r) => r.ratingId).toSet(),
     );
@@ -88,7 +106,7 @@ class _MyRatingsScreenState extends State<MyRatingsScreen> {
         body: SafeArea(
           child: Column(
             children: [
-              if (vm.memberId != null && (vm.ratings.isNotEmpty || _selecting))
+              if (vm.hasSession && (vm.ratings.isNotEmpty || _selecting))
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Row(
@@ -106,7 +124,7 @@ class _MyRatingsScreenState extends State<MyRatingsScreen> {
                   ),
                 ),
               Expanded(
-                child: vm.memberId == null
+                child: !vm.hasSession
                     ? Center(
                         child: TextButton(
                           onPressed: () => context.push('/register'),
@@ -121,7 +139,9 @@ class _MyRatingsScreenState extends State<MyRatingsScreen> {
                           const Center(child: CircularProgressIndicator()),
                         MyRatingsStatus.empty => _Message(
                           icon: Icons.rate_review_outlined,
-                          message: '등록한 평점이 없습니다.',
+                          message: tokenSession == null
+                              ? '등록한 평점이 없습니다.'
+                              : '이번 로그인에서 등록한 평점이 없습니다.',
                           onRetry: vm.load,
                         ),
                         MyRatingsStatus.error => _Message(

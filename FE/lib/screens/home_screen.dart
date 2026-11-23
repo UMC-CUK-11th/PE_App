@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../models/movie.dart';
 import '../view_models/movie_home_view_model.dart';
+import '../view_models/auth_session.dart';
 import '../theme/app_colors.dart';
 import '../widgets/movie_card.dart';
 import '../widgets/tmdb_poster.dart';
@@ -15,6 +16,8 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<MovieHomeViewModel>();
+    final session = context.watch<AuthSession?>();
+    final nickname = session?.member?.nickname ?? session?.loginNickname;
     final popularMovies = viewModel.movies;
     final featuredMovie = popularMovies.firstOrNull;
 
@@ -62,11 +65,13 @@ class HomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Padding(
-                padding: EdgeInsets.all(16),
+              Padding(
+                padding: const EdgeInsets.all(16),
                 child: Text(
-                  '오늘은 어떤\n영화를 볼까요?',
-                  style: TextStyle(
+                  nickname == null
+                      ? '오늘은 어떤\n영화를 볼까요?'
+                      : '$nickname 님, 오늘은 어떤\n영화를 볼까요?',
+                  style: const TextStyle(
                     color: AppColors.onSurface,
                     fontSize: 28,
                     height: 36 / 28,

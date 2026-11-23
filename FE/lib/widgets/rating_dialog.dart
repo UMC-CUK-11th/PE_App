@@ -10,12 +10,14 @@ class RatingDialog extends StatefulWidget {
     required this.onSubmit,
     this.initialRating = 0,
     this.initialComment,
+    this.onAccessFailure,
     super.key,
   });
 
   final double initialRating;
   final String? initialComment;
   final Future<void> Function(RatingInput) onSubmit;
+  final ValueChanged<ApiFailure>? onAccessFailure;
 
   @override
   State<RatingDialog> createState() => _RatingDialogState();
@@ -51,9 +53,17 @@ class _RatingDialogState extends State<RatingDialog> {
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       if (mounted) {
+        final failure = ApiFailure.from(error, '평점을 저장하지 못했습니다.');
+        final onAccessFailure = widget.onAccessFailure;
+        if (onAccessFailure != null &&
+            (failure.matches(403) || failure.matches(409))) {
+          onAccessFailure(failure);
+          Navigator.of(context).pop(false);
+          return;
+        }
         setState(() {
           _saving = false;
-          _error = ApiFailure.from(error, '평점을 저장하지 못했습니다.').message;
+          _error = failure.message;
         });
       }
     }

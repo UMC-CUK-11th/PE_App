@@ -1,13 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../theme/app_colors.dart';
+import '../view_models/auth_session.dart';
 
-class MainScreen extends StatelessWidget {
+class MainScreen extends StatefulWidget {
   const MainScreen({required this.navigationShell, super.key});
 
   final StatefulNavigationShell navigationShell;
+
+  @override
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
+  StatefulNavigationShell get navigationShell => widget.navigationShell;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final session = context.read<AuthSession?>();
+      if (session?.memberStatus == MemberLoadStatus.idle) session!.loadMember();
+    });
+  }
 
   void _changeBranch(int index) {
     navigationShell.goBranch(
