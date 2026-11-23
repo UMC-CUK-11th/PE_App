@@ -2,6 +2,7 @@ package com.umc11th.movie.service;
 
 import com.umc11th.movie.dto.MemberResponse;
 import com.umc11th.movie.dto.SignUpRequest;
+import com.umc11th.movie.dto.UpdateNicknameRequest;
 import com.umc11th.movie.entity.Member;
 import com.umc11th.movie.exception.MemberConflictException;
 import com.umc11th.movie.repository.MemberRepository;
@@ -13,6 +14,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -115,5 +118,19 @@ class MemberServiceTest {
                 .satisfies(exception -> assertThat(
                         ((ResponseStatusException) exception).getStatusCode()
                 ).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void updatesAuthenticatedMemberNickname() {
+        Member member = new Member("umc@example.com", "encoded-password", "oldname");
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+
+        MemberResponse response = memberService.updateNickname(
+                1L,
+                new UpdateNicknameRequest("newname")
+        );
+
+        assertThat(response.nickname()).isEqualTo("newname");
+        assertThat(member.getNickname()).isEqualTo("newname");
     }
 }

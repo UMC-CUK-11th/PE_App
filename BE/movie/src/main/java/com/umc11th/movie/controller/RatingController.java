@@ -30,7 +30,7 @@ public class RatingController {
 
     private final RatingService ratingService;
 
-    @GetMapping("/members/{memberId}/ratings")
+    @GetMapping({"/members/{memberId}/ratings", "/v7/members/{memberId}/ratings"})
     public List<RatingResponse> getRatings(
             @PathVariable @Min(1) Long memberId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
@@ -39,7 +39,7 @@ public class RatingController {
         return ratingService.getRatings(memberId, page, size);
     }
 
-    @GetMapping("/members/me/ratings")
+    @GetMapping({"/members/me/ratings", "/v7/members/me/ratings"})
     public List<RatingResponse> getMyRatings(
             @LoginMember Long memberId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
@@ -48,7 +48,7 @@ public class RatingController {
         return ratingService.getRatings(memberId, page, size);
     }
 
-    @PostMapping("/ratings")
+    @PostMapping({"/ratings", "/v7/ratings"})
     public ResponseEntity<ApiResponse<Long>> create(
             @LoginMember Long memberId,
             @Valid @RequestBody CreateRatingRequest request
@@ -58,7 +58,7 @@ public class RatingController {
                 .body(ApiResponse.created("평점 등록에 성공했습니다.", ratingId));
     }
 
-    @PatchMapping("/ratings/{ratingId}")
+    @PatchMapping({"/ratings/{ratingId}", "/v7/ratings/{ratingId}"})
     public ResponseEntity<ApiResponse<Void>> update(
             @LoginMember Long memberId,
             @PathVariable @Min(1) Long ratingId,
@@ -68,7 +68,7 @@ public class RatingController {
         return ResponseEntity.ok(ApiResponse.ok("평점 수정에 성공했습니다.", null));
     }
 
-    @DeleteMapping("/ratings/{ratingId}")
+    @DeleteMapping({"/ratings/{ratingId}", "/v7/ratings/{ratingId}"})
     public ResponseEntity<Void> delete(
             @LoginMember Long memberId,
             @PathVariable @Min(1) Long ratingId

@@ -4,6 +4,7 @@ import com.umc11th.movie.dto.EmailCheckResponse;
 import com.umc11th.movie.dto.MemberResponse;
 import com.umc11th.movie.dto.NicknameCheckResponse;
 import com.umc11th.movie.dto.SignUpRequest;
+import com.umc11th.movie.dto.UpdateNicknameRequest;
 import com.umc11th.movie.entity.Member;
 import com.umc11th.movie.exception.MemberConflictException;
 import com.umc11th.movie.repository.MemberRepository;
@@ -42,6 +43,23 @@ public class MemberService {
                         HttpStatus.NOT_FOUND,
                         "존재하지 않는 유저입니다."
                 ));
+        return MemberResponse.from(member);
+    }
+
+    @Transactional
+    public MemberResponse updateNickname(Long memberId, UpdateNicknameRequest request) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "존재하지 않는 유저입니다."
+                ));
+        if (member.getNickname().equals(request.nickname())) {
+            return MemberResponse.from(member);
+        }
+        if (memberRepository.existsByNickname(request.nickname())) {
+            throw MemberConflictException.duplicateNickname();
+        }
+        member.updateNickname(request.nickname());
         return MemberResponse.from(member);
     }
 

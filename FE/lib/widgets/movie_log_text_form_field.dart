@@ -7,12 +7,12 @@ import '../theme/app_text_styles.dart';
 class MovieLogTextFormField extends StatelessWidget {
   const MovieLogTextFormField({
     required this.label,
-    required this.hintText,
+    this.hintText = '',
     required this.controller,
-    required this.focusNode,
-    required this.validator,
-    required this.onChanged,
-    required this.textInputAction,
+    this.focusNode,
+    this.validator,
+    this.onChanged,
+    this.textInputAction = TextInputAction.next,
     this.keyboardType,
     this.onFieldSubmitted,
     this.isCompact = false,
@@ -24,15 +24,19 @@ class MovieLogTextFormField extends StatelessWidget {
     this.hintFontWeight = FontWeight.w500,
     this.showLabel = true,
     this.formFieldKey,
+    this.enabled = true,
+    this.errorText,
+    this.maxLength,
+    this.suffixIcon,
     super.key,
   });
 
   final String label;
   final String hintText;
   final TextEditingController controller;
-  final FocusNode focusNode;
-  final FormFieldValidator<String> validator;
-  final ValueChanged<String> onChanged;
+  final FocusNode? focusNode;
+  final FormFieldValidator<String>? validator;
+  final ValueChanged<String>? onChanged;
   final TextInputAction textInputAction;
   final TextInputType? keyboardType;
   final ValueChanged<String>? onFieldSubmitted;
@@ -45,10 +49,16 @@ class MovieLogTextFormField extends StatelessWidget {
   final FontWeight hintFontWeight;
   final bool showLabel;
   final Key? formFieldKey;
+  final bool enabled;
+  final String? errorText;
+  final int? maxLength;
+  final Widget? suffixIcon;
 
   @override
   Widget build(BuildContext context) {
-    final validationMessage = showError ? validator(controller.text) : null;
+    final validationMessage = showError
+        ? validator?.call(controller.text)
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -67,6 +77,8 @@ class MovieLogTextFormField extends StatelessWidget {
           controller: controller,
           focusNode: focusNode,
           validator: validator,
+          enabled: enabled,
+          maxLength: maxLength,
           errorBuilder: isCompact
               ? (context, errorText) => const SizedBox.shrink()
               : null,
@@ -89,6 +101,7 @@ class MovieLogTextFormField extends StatelessWidget {
                 : const BoxConstraints(minHeight: 42),
             isDense: true,
             hintText: hintText,
+            errorText: errorText,
             hintStyle:
                 (isCompact
                         ? AppTextStyles.inputHintCompact
@@ -102,7 +115,7 @@ class MovieLogTextFormField extends StatelessWidget {
               horizontal: 16,
               vertical: 8,
             ),
-            suffixIcon: _buildSuffixIcon(),
+            suffixIcon: suffixIcon ?? _buildSuffixIcon(),
             suffixIconConstraints: const BoxConstraints(
               minWidth: 52,
               minHeight: 42,
@@ -154,9 +167,9 @@ class MovieLogTextFormField extends StatelessWidget {
 
     if (onToggleObscure != null) {
       return ListenableBuilder(
-        listenable: focusNode,
+        listenable: focusNode!,
         builder: (context, child) {
-          if (isValid && !focusNode.hasFocus) {
+          if (isValid && !focusNode!.hasFocus) {
             return _StatusIcon(
               key: const ValueKey('password-valid-icon'),
               assetPath: 'assets/icons/check_circle.svg',
