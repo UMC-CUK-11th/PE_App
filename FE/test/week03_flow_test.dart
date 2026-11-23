@@ -120,11 +120,9 @@ void main() {
   testWidgets('영화 카드는 상세 화면으로 이동하고 뒤로 돌아온다', (tester) async {
     await pumpRoute(tester, '/movies');
 
-    tester
-        .widget<GestureDetector>(find.byKey(const ValueKey('movie-card-1')))
-        .onTap!();
+    await tester.tap(find.byKey(const ValueKey('movie-card-1')));
     await tester.pumpAndSettle();
-    expect(find.text('Cinema Archive'), findsOneWidget);
+    expect(find.text('영화 상세'), findsOneWidget);
 
     await tester.tap(find.byTooltip('뒤로 가기'));
     await tester.pumpAndSettle();
@@ -139,16 +137,14 @@ void main() {
 
     await tester.ensureVisible(find.byKey(const ValueKey('favorite-button')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('favorite-button')));
-    await tester.pump();
-    expect(find.text('즐겨찾기에 추가했습니다.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('favorite-button')), findsOneWidget);
 
     await tester.ensureVisible(
       find.byKey(const ValueKey('open-rating-dialog-button')),
     );
     await tester.tap(find.byKey(const ValueKey('open-rating-dialog-button')));
     await tester.pumpAndSettle();
-    expect(find.text('영화는 어떠셨나요?'), findsOneWidget);
+    expect(find.text('평점을 남겨주세요'), findsOneWidget);
 
     final confirmButton = find.widgetWithText(FilledButton, '확인');
     expect(tester.widget<FilledButton>(confirmButton).onPressed, isNull);

@@ -137,6 +137,38 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+            InkWell(
+              key: const ValueKey('my-favorites-entry'),
+              onTap: () => context.push('/my/favorites'),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                height: 64,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.softViolet),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '내 즐겨찾기',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.black,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      color: AppColors.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 24),
             const Align(
               alignment: Alignment.centerLeft,

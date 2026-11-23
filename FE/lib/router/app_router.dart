@@ -10,11 +10,13 @@ import '../data/services/movie_list_preferences.dart';
 import '../data/services/tmdb_movie_service.dart';
 import '../models/movie.dart';
 import '../screens/home_screen.dart';
+import '../screens/favorites_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/main_screen.dart';
 import '../screens/member_ratings_screen.dart';
 import '../screens/movie_detail_screen.dart';
 import '../screens/movie_list_screen.dart';
+import '../screens/movie_search_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/edit_profile_screen.dart';
 import '../screens/register_screen.dart';
@@ -22,6 +24,8 @@ import '../screens/start_screen.dart';
 import '../screens/splash_screen.dart';
 import '../screens/week05_api_screen.dart';
 import '../view_models/movie_detail_view_model.dart';
+import '../view_models/favorites_view_model.dart';
+import '../view_models/movie_search_view_model.dart';
 import '../view_models/auth_view_model.dart';
 
 abstract final class AppRouter {
@@ -107,6 +111,21 @@ abstract final class AppRouter {
           },
         ),
         GoRoute(
+          path: '/my/favorites',
+          builder: (context, state) {
+            if (resolvedMemberSession.memberId == null) {
+              return const _MemberRequiredScreen();
+            }
+            return FavoritesScreen(
+              key: ValueKey(resolvedMemberSession.memberId),
+              viewModel: FavoritesViewModel(
+                api: resolvedMemberApiService,
+                movies: resolvedTmdbMovieService,
+              ),
+            );
+          },
+        ),
+        GoRoute(
           path: '/my/profile/edit',
           builder: (context, state) => const EditProfileScreen(),
         ),
@@ -151,6 +170,12 @@ abstract final class AppRouter {
               ],
             ),
           ],
+        ),
+        GoRoute(
+          path: '/movies/search',
+          builder: (context, state) => MovieSearchScreen(
+            viewModel: MovieSearchViewModel(resolvedTmdbMovieService),
+          ),
         ),
         GoRoute(
           path: '/movies/:movieId',
@@ -216,7 +241,7 @@ class _MovieDetailLoaderState extends State<_MovieDetailLoader> {
     } on Object {
       // 장르 정보가 없어도 영화 상세 조회는 계속한다.
     }
-    if (widget.catalogService case final TmdbMovieService service) {
+    if (widget.catalogService case final PagedMovieCatalogService service) {
       return (await service.fetchMovieById(widget.movieId)).toMovie(genreNames);
     }
     final movies = await widget.catalogService.fetchDiscover();

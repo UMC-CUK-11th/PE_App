@@ -4,6 +4,7 @@ import 'package:movielog/data/services/member_api_service.dart';
 import 'package:movielog/data/services/learning_member_session.dart';
 import 'package:movielog/data/models/sign_up_models.dart';
 import 'package:movielog/data/models/rating_requests.dart';
+import 'package:movielog/data/models/favorite.dart';
 
 void main() {
   test('닉네임과 이메일 available 응답을 읽는다', () async {
@@ -40,7 +41,7 @@ void main() {
     expect(ratings, hasLength(1));
     expect(ratings.single.movieId, 550);
     expect(ratings.single.score, 5);
-    expect(capturedRequest?.path, '/v7/members/1/ratings');
+    expect(capturedRequest?.path, '/v8/members/1/ratings');
     expect(capturedRequest?.queryParameters, {'page': 0, 'size': 10});
   });
 
@@ -72,7 +73,7 @@ void main() {
 
     expect(response.result?.memberId, 7);
     expect(request?.method, 'POST');
-    expect(request?.path, '/members');
+    expect(request?.path, '/v8/members');
   });
 
   test('평점 등록·수정·삭제는 movieId와 ratingId를 구분한다', () async {
@@ -114,18 +115,18 @@ void main() {
     );
     await service.deleteRating(ratingId: 31);
 
-    expect(requests[0].path, '/v7/ratings');
+    expect(requests[0].path, '/v8/ratings');
     expect(requests[0].data, containsPair('movieId', 550));
     expect(requests[0].headers['Authorization'], 'Bearer test-access-token');
-    expect(requests[1].path, '/v7/ratings/31');
+    expect(requests[1].path, '/v8/ratings/31');
     expect(requests[1].data, containsPair('comment', null));
     expect(requests[1].headers['Authorization'], 'Bearer test-access-token');
-    expect(requests[2].path, '/v7/ratings/31');
+    expect(requests[2].path, '/v8/ratings/31');
     expect(requests[2].method, 'DELETE');
     expect(requests[2].headers['Authorization'], 'Bearer test-access-token');
   });
 
-  test('내 정보 조회·수정은 v7 보호 경로와 Bearer 토큰을 사용한다', () async {
+  test('내 정보 조회·수정은 v8 보호 경로와 Bearer 토큰을 사용한다', () async {
     final requests = <RequestOptions>[];
     final session = LearningMemberSession(initialAccessToken: 'member-token');
     final service = MemberApiService(
@@ -152,14 +153,71 @@ void main() {
     expect(me.memberId, 7);
     expect(updated.nickname, '새닉네임');
     expect(requests.map((request) => request.path), [
-      '/v7/members/me',
-      '/v7/members/me',
+      '/v8/members/me',
+      '/v8/members/me',
     ]);
     expect(requests[1].method, 'PATCH');
     expect(requests[1].data, {'nickname': '새닉네임'});
     expect(
       requests.every(
         (request) => request.headers['Authorization'] == 'Bearer member-token',
+      ),
+      isTrue,
+    );
+  });
+
+  test('즐겨찾기와 영화 기록 요청은 v8 보호 경로와 Bearer 토큰을 사용한다', () async {
+    final requests = <RequestOptions>[];
+    final session = LearningMemberSession(initialAccessToken: 'favorite-token');
+    final service = MemberApiService(
+      _fakeDio((options) {
+        requests.add(options);
+        if (options.method == 'GET' && options.path == '/v8/favorites') {
+          return {
+            'isSuccess': true,
+            'code': 'COMMON200',
+            'message': '성공',
+            'result': [
+              {'favoriteId': 1, 'movieId': 550},
+            ],
+          };
+        }
+        return {
+          'isSuccess': true,
+          'code': 'COMMON200',
+          'message': '성공',
+          'result': options.path == '/v8/favorites/550'
+              ? {'isFavorite': true}
+              : null,
+        };
+      }),
+      authSession: session,
+    );
+
+    expect((await service.fetchFavorites()).single.movieId, 550);
+    expect(await service.fetchFavoriteStatus(550), isTrue);
+    await service.createFavorite(550);
+    await service.deleteFavorite(550);
+    await service.createMovieRecord(
+      const MovieRecordRequest(
+        movieId: 550,
+        score: 5,
+        comment: '좋아요',
+        addToFavorites: true,
+      ),
+    );
+
+    expect(requests.map((request) => request.path), [
+      '/v8/favorites',
+      '/v8/favorites/550',
+      '/v8/favorites',
+      '/v8/favorites/550',
+      '/v8/movie-records',
+    ]);
+    expect(
+      requests.every(
+        (request) =>
+            request.headers['Authorization'] == 'Bearer favorite-token',
       ),
       isTrue,
     );

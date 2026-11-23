@@ -178,6 +178,13 @@ class AuthViewModel extends ChangeNotifier {
 
   Future<void> logout() => _clearCurrentSession();
 
+  void handleSessionExpired() {
+    if (status == AuthStatus.signedOut || status == AuthStatus.initializing) {
+      return;
+    }
+    unawaited(_clearCurrentSession(expired: true));
+  }
+
   void clearMessage() {
     if (message == null) return;
     message = null;

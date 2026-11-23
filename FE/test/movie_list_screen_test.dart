@@ -35,7 +35,12 @@ void main() {
     expect(find.byKey(const ValueKey('genre-filter-button')), findsOneWidget);
     expect(
       tester
-          .widget<IconButton>(find.byKey(const ValueKey('genre-filter-button')))
+          .widget<TextButton>(
+            find.descendant(
+              of: find.byKey(const ValueKey('genre-filter-button')),
+              matching: find.byType(TextButton),
+            ),
+          )
           .onPressed,
       isNull,
     );
@@ -63,7 +68,7 @@ void main() {
     ]);
   });
 
-  testWidgets('Challenge 영화 목록은 Figma 헤더와 정렬·필터 아이콘을 사용한다', (tester) async {
+  testWidgets('9주차 영화 목록은 Figma 헤더와 장르·검색 탭을 사용한다', (tester) async {
     await tester.pumpWidget(
       testApp(service: const FakeMovieService(delay: Duration.zero)),
     );
@@ -74,8 +79,9 @@ void main() {
     );
     expect(title.style?.fontSize, 22);
     expect(title.style?.color, AppColors.violet);
-    expect(find.byKey(const ValueKey('movie-sort-button')), findsOneWidget);
-    expect(find.byIcon(Icons.filter_alt_outlined), findsOneWidget);
+    expect(find.text('전체'), findsOneWidget);
+    expect(find.text('장르'), findsOneWidget);
+    expect(find.text('검색'), findsOneWidget);
     expect(find.byType(ChoiceChip), findsNothing);
   });
 
