@@ -175,7 +175,7 @@ void main() {
     await tester.enterText(nicknameField, '노바');
     response.complete(
       Response<dynamic>(
-        requestOptions: RequestOptions(path: '/members/nickname/노바'),
+        requestOptions: RequestOptions(path: '/v8/members/nickname/노바'),
         statusCode: 200,
         data: {'available': true},
       ),
@@ -191,7 +191,7 @@ void main() {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          final Map<String, dynamic> data = options.path == '/v7/auth/login'
+          final Map<String, dynamic> data = options.path == '/v8/auth/login'
               ? {
                   'isSuccess': true,
                   'code': 'COMMON200',
@@ -213,7 +213,7 @@ void main() {
           handler.resolve(
             Response<dynamic>(
               requestOptions: options,
-              statusCode: options.path == '/members' ? 201 : 200,
+              statusCode: options.path == '/v8/members' ? 201 : 200,
               data: data,
             ),
           );

@@ -31,9 +31,9 @@ void main() {
     final service = MemberApiService(
       _dio(
         (_) => throw DioException(
-          requestOptions: RequestOptions(path: '/v7/members/me'),
+          requestOptions: RequestOptions(path: '/v8/members/me'),
           response: Response<Map<String, dynamic>>(
-            requestOptions: RequestOptions(path: '/v7/members/me'),
+            requestOptions: RequestOptions(path: '/v8/members/me'),
             statusCode: 401,
             data: {
               'isSuccess': false,
@@ -104,7 +104,7 @@ void main() {
     expect(viewModel.status, AuthStatus.signedIn);
     expect(viewModel.memberStatus, MemberLoadStatus.idle);
     expect(await storage.read(), 'new-token');
-    expect(paths, ['/v7/auth/login']);
+    expect(paths, ['/v8/auth/login']);
   });
 
   test('로그인 저장 중 로그아웃되면 이전 토큰을 제거하고 signedOut을 유지한다', () async {
@@ -180,6 +180,27 @@ void main() {
     expect(session.memberId, isNull);
     expect(viewModel.tokenDeletionPending, isTrue);
     expect(await viewModel.retryTokenDeletion(), isFalse);
+  });
+
+  test('보호 API의 세션 만료 알림은 인증 상태와 저장 토큰을 정리한다', () async {
+    final storage = MemoryTokenStorage('expired-token');
+    final session = LearningMemberSession(
+      initialMemberId: 7,
+      initialAccessToken: 'expired-token',
+    );
+    final viewModel = AuthViewModel(
+      MemberApiService(Dio(), authSession: session),
+      session,
+      storage,
+    )..status = AuthStatus.signedIn;
+
+    viewModel.handleSessionExpired();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(viewModel.status, AuthStatus.signedOut);
+    expect(viewModel.sessionExpired, isTrue);
+    expect(session.accessToken, isNull);
+    expect(await storage.read(), isNull);
   });
 }
 

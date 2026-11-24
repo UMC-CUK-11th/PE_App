@@ -36,7 +36,7 @@ public class FavoriteController {
 
     private final FavoriteService favoriteService;
 
-    @PostMapping("/favorites")
+    @PostMapping({"/favorites", "/v8/favorites"})
     @Operation(summary = "즐겨찾기 등록", description = "Bearer 토큰의 회원에게 TMDB 영화를 저장합니다.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -48,14 +48,14 @@ public class FavoriteController {
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",
-                    description = "중복 등록",
+                    description = "FAVORITE409_1 - 이미 즐겨찾기에 등록함",
                     content = @Content(examples = @ExampleObject(value = """
                             {"isSuccess":false,"code":"FAVORITE409_1","message":"이미 이 영화를 즐겨찾기하셨습니다.","result":null}
                             """))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
-                    description = "인증 실패"
+                    description = "AUTH401_2/AUTH401_3/AUTH401_4 - 인증 실패"
             )
     })
     public ResponseEntity<ApiResponse<FavoriteResponse>> create(
@@ -67,8 +67,8 @@ public class FavoriteController {
                 .body(ApiResponse.created("즐겨찾기를 등록했습니다.", response));
     }
 
-    @GetMapping("/favorites")
-    @Operation(summary = "내 즐겨찾기 목록 조회", description = "빈 목록도 200과 빈 배열로 응답합니다.")
+    @GetMapping({"/favorites", "/v8/favorites"})
+    @Operation(summary = "내 즐겨찾기 목록 조회", description = "Bearer 토큰이 필요하며, 빈 목록도 200과 빈 배열로 응답합니다.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
@@ -79,7 +79,7 @@ public class FavoriteController {
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
-                    description = "인증 실패"
+                    description = "AUTH401_2/AUTH401_3/AUTH401_4 - 인증 실패"
             )
     })
     public ResponseEntity<ApiResponse<List<FavoriteResponse>>> getMyFavorites(
@@ -89,8 +89,8 @@ public class FavoriteController {
         return ResponseEntity.ok(ApiResponse.ok("내 즐겨찾기 목록을 조회했습니다.", response));
     }
 
-    @GetMapping("/favorites/{movieId}")
-    @Operation(summary = "즐겨찾기 여부 조회")
+    @GetMapping({"/favorites/{movieId}", "/v8/favorites/{movieId}"})
+    @Operation(summary = "즐겨찾기 여부 조회", description = "Bearer 토큰이 필요하며, 등록하지 않은 영화는 false를 반환합니다.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
@@ -101,7 +101,7 @@ public class FavoriteController {
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
-                    description = "인증 실패"
+                    description = "AUTH401_2/AUTH401_3/AUTH401_4 - 인증 실패"
             )
     })
     public ResponseEntity<ApiResponse<FavoriteStatusResponse>> getStatus(
@@ -112,8 +112,8 @@ public class FavoriteController {
         return ResponseEntity.ok(ApiResponse.ok("즐겨찾기 여부를 조회했습니다.", response));
     }
 
-    @DeleteMapping("/favorites/{movieId}")
-    @Operation(summary = "즐겨찾기 해제")
+    @DeleteMapping({"/favorites/{movieId}", "/v8/favorites/{movieId}"})
+    @Operation(summary = "즐겨찾기 해제", description = "Bearer 토큰 회원의 즐겨찾기를 해제합니다.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
@@ -124,7 +124,11 @@ public class FavoriteController {
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404",
-                    description = "즐겨찾기 없음"
+                    description = "FAVORITE404_1 - 즐겨찾기 없음"
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401",
+                    description = "AUTH401_2/AUTH401_3/AUTH401_4 - 인증 실패"
             )
     })
     public ResponseEntity<ApiResponse<Void>> delete(

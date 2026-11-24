@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -17,7 +16,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../view_models/movie_home_view_model.dart';
 import '../view_models/movie_list_view_model.dart';
-import '../widgets/movie_grid.dart';
+import '../widgets/movie_list_tile.dart';
 import '../widgets/movie_list_states.dart';
 
 class MovieListScreen extends StatefulWidget {
@@ -44,6 +43,7 @@ class MovieListScreen extends StatefulWidget {
 
 class _MovieListScreenState extends State<MovieListScreen> {
   late final MovieListViewModel _viewModel;
+  final ScrollController _scrollController = ScrollController();
   MovieSortOption _sortOption = MovieSortOption.latest;
   int _handledErrorVersion = 0;
 
@@ -57,7 +57,15 @@ class _MovieListScreenState extends State<MovieListScreen> {
       _TimeoutMovieCatalogService(baseService, widget.timeout),
       initialGenreIds: initialIds,
     )..addListener(_onViewModelChanged);
+    _scrollController.addListener(_loadMoreAtEnd);
     unawaited(_initialize());
+  }
+
+  void _loadMoreAtEnd() {
+    if (_scrollController.hasClients &&
+        _scrollController.position.extentAfter < 180) {
+      unawaited(_viewModel.loadMore());
+    }
   }
 
   List<int>? _legacyGenreIds() {
@@ -129,6 +137,7 @@ class _MovieListScreenState extends State<MovieListScreen> {
     _viewModel
       ..removeListener(_onViewModelChanged)
       ..dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -190,40 +199,22 @@ class _MovieListScreenState extends State<MovieListScreen> {
       child: Consumer<MovieListViewModel>(
         builder: (context, viewModel, child) {
           return Scaffold(
+            backgroundColor: AppColors.warmWhite,
             appBar: AppBar(
               toolbarHeight: 64,
-              titleSpacing: 16,
-              title: Transform.translate(
-                offset: const Offset(0, 2),
-                child: const Text('영화', style: AppTextStyles.signUpAppBarTitle),
-              ),
-              actions: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: IconButton(
-                    tooltip: '영화 검색',
-                    onPressed: () {},
-                    icon: SvgPicture.asset(
-                      'assets/icons/search.svg',
-                      width: 20,
-                      height: 20,
-                      colorFilter: const ColorFilter.mode(
-                        AppColors.violet,
-                        BlendMode.srcIn,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              centerTitle: true,
+              title: const Text('영화', style: AppTextStyles.signUpAppBarTitle),
             ),
             body: Column(
               children: [
-                _MovieListToolbar(
-                  selectedCount: viewModel.selectedGenreIds?.length ?? 0,
-                  sortOption: _sortOption,
-                  isEnabled: !viewModel.isGenreSelectionLocked,
-                  onSortSelected: _selectSortOption,
-                  onFilterPressed: _openGenreFilter,
+                _Week09Tabs(
+                  selectedGenreIds: viewModel.selectedGenreIds,
+                  genres: viewModel.genres,
+                  enabled: !viewModel.isGenreSelectionLocked,
+                  onAll: () => _applyQuickGenres(const []),
+                  onGenre: (id) => _applyQuickGenres([id]),
+                  onFilter: _openGenreFilter,
+                  onSearch: () => context.push('/movies/search'),
                 ),
                 Expanded(child: _buildContent(viewModel)),
               ],
@@ -259,80 +250,153 @@ class _MovieListScreenState extends State<MovieListScreen> {
     }
     return RefreshIndicator(
       onRefresh: viewModel.refresh,
-      child: MovieGrid(movies: movies),
+      child: ListView.separated(
+        key: const PageStorageKey('movie-grid'),
+        controller: _scrollController,
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+        itemCount: movies.length + 1,
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
+        itemBuilder: (context, index) {
+          if (index < movies.length) {
+            final movie = movies[index];
+            return MovieListTile(
+              key: ValueKey('movie-card-${movie.id}'),
+              movie: movie,
+              onTap: () => context.push('/movies/${movie.id}', extra: movie),
+            );
+          }
+          if (viewModel.isLoadingMore) {
+            return const Padding(
+              padding: EdgeInsets.all(20),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (viewModel.loadMoreError != null) {
+            return TextButton(
+              key: const ValueKey('load-more-retry'),
+              onPressed: viewModel.loadMore,
+              child: const Text('다음 페이지를 불러오지 못했어요 · 다시 시도'),
+            );
+          }
+          if (!viewModel.hasMore) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: Text('마지막 영화입니다.')),
+            );
+          }
+          return SizedBox(
+            height: 44,
+            child: FilledButton(
+              key: const ValueKey('movie-load-more-button'),
+              onPressed: viewModel.loadMore,
+              child: const Text('더 보기'),
+            ),
+          );
+        },
+      ),
     );
   }
 
-  Future<void> _selectSortOption(MovieSortOption option) async {
-    setState(() => _sortOption = option);
-    await widget.preferences.saveSortOption(option);
+  Future<void> _applyQuickGenres(List<int> ids) async {
+    final succeeded = await _viewModel.applyGenres(ids);
+    if (!mounted || !succeeded) return;
+    _updateRoute(_normalizedIds(_viewModel.selectedGenreIds));
   }
 }
 
-class _MovieListToolbar extends StatelessWidget {
-  const _MovieListToolbar({
-    required this.selectedCount,
-    required this.sortOption,
-    required this.isEnabled,
-    required this.onSortSelected,
-    required this.onFilterPressed,
+class _Week09Tabs extends StatelessWidget {
+  const _Week09Tabs({
+    required this.selectedGenreIds,
+    required this.genres,
+    required this.enabled,
+    required this.onAll,
+    required this.onGenre,
+    required this.onFilter,
+    required this.onSearch,
   });
 
-  final int selectedCount;
-  final MovieSortOption sortOption;
-  final bool isEnabled;
-  final ValueChanged<MovieSortOption> onSortSelected;
-  final VoidCallback onFilterPressed;
+  final List<int>? selectedGenreIds;
+  final List<TmdbGenreDto> genres;
+  final bool enabled;
+  final VoidCallback onAll;
+  final ValueChanged<int> onGenre;
+  final VoidCallback onFilter;
+  final VoidCallback onSearch;
 
   @override
   Widget build(BuildContext context) {
+    int? idFor(String name) {
+      for (final genre in genres) {
+        if (genre.name == name) return genre.id;
+      }
+      return null;
+    }
+
+    final selected = selectedGenreIds ?? const [];
+    final drama = idFor('드라마');
+    final romance = idFor('로맨스');
     return SizedBox(
       key: const ValueKey('genre-filter-bar'),
-      height: 48,
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            PopupMenuButton<MovieSortOption>(
-              key: const ValueKey('movie-sort-button'),
-              enabled: isEnabled,
-              initialValue: sortOption,
-              tooltip: '영화 정렬',
-              icon: const Icon(
-                Icons.sort_rounded,
-                size: 22,
-                color: AppColors.violet,
-              ),
-              onSelected: onSortSelected,
-              itemBuilder: (context) => MovieSortOption.values
-                  .map(
-                    (option) =>
-                        PopupMenuItem(value: option, child: Text(option.label)),
-                  )
-                  .toList(),
+      height: 54,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+        children: [
+          _TabButton(
+            label: '전체',
+            selected: selected.isEmpty,
+            onTap: enabled ? onAll : null,
+          ),
+          if (drama != null)
+            _TabButton(
+              label: '드라마',
+              selected: selected.length == 1 && selected.contains(drama),
+              onTap: enabled ? () => onGenre(drama) : null,
             ),
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Badge(
-                isLabelVisible: selectedCount > 0,
-                label: Text('$selectedCount'),
-                alignment: Alignment.topRight,
-                offset: const Offset(-3, 4),
-                child: IconButton(
-                  key: const ValueKey('genre-filter-button'),
-                  tooltip: '장르 필터',
-                  onPressed: isEnabled ? onFilterPressed : null,
-                  icon: const Icon(
-                    Icons.filter_alt_outlined,
-                    size: 22,
-                    color: AppColors.violet,
-                  ),
-                ),
-              ),
+          if (romance != null)
+            _TabButton(
+              label: '로맨스',
+              selected: selected.length == 1 && selected.contains(romance),
+              onTap: enabled ? () => onGenre(romance) : null,
             ),
-          ],
+          _TabButton(
+            key: const ValueKey('genre-filter-button'),
+            label: '장르',
+            selected: selected.length > 1,
+            onTap: enabled ? onFilter : null,
+          ),
+          _TabButton(label: '검색', selected: false, onTap: onSearch),
+        ],
+      ),
+    );
+  }
+}
+
+class _TabButton extends StatelessWidget {
+  const _TabButton({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    super.key,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          foregroundColor: selected ? AppColors.white : AppColors.violet,
+          backgroundColor: selected ? AppColors.violet : Colors.transparent,
+          side: const BorderSide(color: AppColors.softViolet),
+          shape: const StadiumBorder(),
         ),
+        child: Text(label),
       ),
     );
   }
@@ -550,7 +614,7 @@ class _GenreFilterSheetState extends State<_GenreFilterSheet> {
   }
 }
 
-class _TimeoutMovieCatalogService implements MovieCatalogService {
+class _TimeoutMovieCatalogService implements PagedMovieCatalogService {
   const _TimeoutMovieCatalogService(this._delegate, this._timeout);
 
   final MovieCatalogService _delegate;
@@ -567,4 +631,34 @@ class _TimeoutMovieCatalogService implements MovieCatalogService {
   @override
   Future<List<TmdbMovieDto>> fetchDiscover({List<int>? genreIds}) =>
       _delegate.fetchDiscover(genreIds: genreIds).timeout(_timeout);
+
+  PagedMovieCatalogService get _paged {
+    final delegate = _delegate;
+    if (delegate is PagedMovieCatalogService) return delegate;
+    throw UnsupportedError('이 영화 서비스는 페이지 조회를 지원하지 않습니다.');
+  }
+
+  @override
+  Future<TmdbMoviePageDto> fetchDiscoverPage({
+    required int page,
+    List<int>? genreIds,
+  }) async {
+    if (_delegate is! PagedMovieCatalogService) {
+      final results = await fetchDiscover(genreIds: genreIds);
+      return TmdbMoviePageDto(page: 1, totalPages: 1, results: results);
+    }
+    return _paged
+        .fetchDiscoverPage(page: page, genreIds: genreIds)
+        .timeout(_timeout);
+  }
+
+  @override
+  Future<TmdbMovieDto> fetchMovieById(int id) =>
+      _paged.fetchMovieById(id).timeout(_timeout);
+
+  @override
+  Future<TmdbMoviePageDto> searchMovies({
+    required String query,
+    required int page,
+  }) => _paged.searchMovies(query: query, page: page).timeout(_timeout);
 }

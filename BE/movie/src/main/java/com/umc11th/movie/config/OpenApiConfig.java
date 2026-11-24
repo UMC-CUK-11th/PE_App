@@ -15,8 +15,8 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("MovieLog API")
-                        .version("v8")
-                        .description("로그인·회원가입은 공개 API이며, 즐겨찾기와 영화 기록 API는 Bearer 토큰이 필요합니다."))
+                        .version("v9")
+                        .description("회원가입·로그인은 공개 API이며, 내 정보·평점·즐겨찾기·영화 기록 API는 Bearer 토큰이 필요합니다."))
                 .components(new Components().addSecuritySchemes(
                         "bearerAuth",
                         new SecurityScheme()

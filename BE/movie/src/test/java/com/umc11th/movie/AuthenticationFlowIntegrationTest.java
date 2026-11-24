@@ -2,6 +2,7 @@ package com.umc11th.movie;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.umc11th.movie.repository.FavoriteRepository;
 import com.umc11th.movie.repository.MemberRepository;
 import com.umc11th.movie.repository.RatingRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +32,9 @@ class AuthenticationFlowIntegrationTest {
     private ObjectMapper objectMapper;
 
     @Autowired
+    private FavoriteRepository favoriteRepository;
+
+    @Autowired
     private RatingRepository ratingRepository;
 
     @Autowired
@@ -38,6 +42,7 @@ class AuthenticationFlowIntegrationTest {
 
     @BeforeEach
     void cleanDatabase() {
+        favoriteRepository.deleteAll();
         ratingRepository.deleteAll();
         memberRepository.deleteAll();
     }
@@ -85,7 +90,7 @@ class AuthenticationFlowIntegrationTest {
                                 }
                                 """))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("AUTH403_1"));
+                .andExpect(jsonPath("$.code").value("RATING403_1"));
 
         mockMvc.perform(patch("/ratings/{ratingId}", ratingId)
                         .header("Authorization", bearer(ownerToken))

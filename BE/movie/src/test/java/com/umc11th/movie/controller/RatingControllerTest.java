@@ -3,6 +3,7 @@ package com.umc11th.movie.controller;
 import com.umc11th.movie.auth.JwtTokenProvider;
 import com.umc11th.movie.dto.RatingResponse;
 import com.umc11th.movie.exception.AuthException;
+import com.umc11th.movie.exception.ApiException;
 import com.umc11th.movie.service.RatingService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
@@ -141,7 +142,11 @@ class RatingControllerTest {
     @Test
     void rejectsDuplicateRatingWithConflictResponse() throws Exception {
         when(ratingService.create(org.mockito.ArgumentMatchers.eq(1L), any()))
-                .thenThrow(new IllegalArgumentException("이미 이 영화에 평점을 남기셨습니다."));
+                .thenThrow(new ApiException(
+                        HttpStatus.CONFLICT,
+                        "RATING409_1",
+                        "이미 이 영화에 평점을 남기셨습니다."
+                ));
 
         mockMvc.perform(post("/ratings")
                         .header("Authorization", "Bearer valid-token")
@@ -154,7 +159,7 @@ class RatingControllerTest {
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.isSuccess").value(false))
-                .andExpect(jsonPath("$.code").value("COMMON4092"))
+                .andExpect(jsonPath("$.code").value("RATING409_1"))
                 .andExpect(jsonPath("$.message")
                         .value("이미 이 영화에 평점을 남기셨습니다."));
     }
@@ -177,7 +182,7 @@ class RatingControllerTest {
                                 """))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.isSuccess").value(false))
-                .andExpect(jsonPath("$.code").value("COMMON4092"))
+                .andExpect(jsonPath("$.code").value("RATING409_1"))
                 .andExpect(jsonPath("$.message")
                         .value("이미 이 영화에 평점을 남기셨습니다."));
     }
@@ -201,7 +206,7 @@ class RatingControllerTest {
                                 """))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.isSuccess").value(false))
-                .andExpect(jsonPath("$.code").value("AUTH403_1"));
+                .andExpect(jsonPath("$.code").value("RATING403_1"));
     }
 
     @Test

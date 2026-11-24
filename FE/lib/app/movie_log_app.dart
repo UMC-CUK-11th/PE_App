@@ -35,6 +35,7 @@ class _MovieLogAppState extends State<MovieLogApp> {
       _session,
       const SecureTokenStorage(),
     );
+    _memberApi.bindUnauthorizedHandler(_authViewModel.handleSessionExpired);
     _router =
         widget.router ??
         AppRouter.createRouter(

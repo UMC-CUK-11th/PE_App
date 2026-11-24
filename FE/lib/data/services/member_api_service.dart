@@ -3,6 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import '../../core/network/auth_interceptor.dart';
 import '../models/member_info.dart';
+import '../models/favorite.dart';
 import '../models/member_rating.dart';
 import '../models/common_response.dart';
 import '../models/rating_requests.dart';
@@ -10,8 +11,11 @@ import '../models/sign_up_models.dart';
 import 'learning_member_session.dart';
 
 class MemberApiService {
-  MemberApiService(this._dio, {LearningMemberSession? authSession})
-    : _session = authSession;
+  MemberApiService(
+    this._dio, {
+    LearningMemberSession? authSession,
+    this._authInterceptor,
+  }) : _session = authSession;
 
   factory MemberApiService.fromEnvironment({LearningMemberSession? session}) {
     String? baseUrl;
@@ -30,15 +34,25 @@ class MemberApiService {
         headers: const {'accept': 'application/json'},
       ),
     );
-    if (session != null) dio.interceptors.add(AuthInterceptor(session));
-    return MemberApiService(dio, authSession: session);
+    final authInterceptor = session == null ? null : AuthInterceptor(session);
+    if (authInterceptor != null) dio.interceptors.add(authInterceptor);
+    return MemberApiService(
+      dio,
+      authSession: session,
+      authInterceptor: authInterceptor,
+    );
   }
 
   final Dio _dio;
+  final AuthInterceptor? _authInterceptor;
   LearningMemberSession? _session;
 
   void bindSession(LearningMemberSession session) {
     _session = session;
+  }
+
+  void bindUnauthorizedHandler(void Function() handler) {
+    _authInterceptor?.onSessionExpired = handler;
   }
 
   Options? _authenticatedOptions() {
@@ -50,14 +64,14 @@ class MemberApiService {
 
   Future<bool> isNicknameAvailable(String nickname) async {
     final response = await _dio.get<Map<String, dynamic>>(
-      '/members/nickname/${Uri.encodeComponent(nickname)}',
+      '/v8/members/nickname/${Uri.encodeComponent(nickname)}',
     );
     return response.data?['available'] as bool? ?? false;
   }
 
   Future<bool> isEmailAvailable(String email) async {
     final response = await _dio.get<Map<String, dynamic>>(
-      '/members/email/${Uri.encodeComponent(email)}',
+      '/v8/members/email/${Uri.encodeComponent(email)}',
     );
     return response.data?['available'] as bool? ?? false;
   }
@@ -68,7 +82,7 @@ class MemberApiService {
     int size = 10,
   }) async {
     final response = await _dio.get<List<dynamic>>(
-      '/v7/members/$memberId/ratings',
+      '/v8/members/$memberId/ratings',
       queryParameters: {'page': page, 'size': size},
     );
     return (response.data ?? const [])
@@ -81,7 +95,7 @@ class MemberApiService {
     CreateMemberRequest request,
   ) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/members',
+      '/v8/members',
       data: request.toJson(),
     );
     return CommonResponse<SignUpResult>.fromJson(
@@ -95,7 +109,7 @@ class MemberApiService {
     required String password,
   }) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/v7/auth/login',
+      '/v8/auth/login',
       data: {'email': email.trim(), 'password': password},
     );
     return CommonResponse<LoginResult>.fromJson(
@@ -108,7 +122,7 @@ class MemberApiService {
     required CreateRatingRequest request,
   }) async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/v7/ratings',
+      '/v8/ratings',
       data: request.toJson(),
       options: _authenticatedOptions(),
     );
@@ -123,7 +137,7 @@ class MemberApiService {
     required UpdateRatingRequest request,
   }) async {
     final response = await _dio.patch<Map<String, dynamic>>(
-      '/v7/ratings/$ratingId',
+      '/v8/ratings/$ratingId',
       data: request.toJson(),
       options: _authenticatedOptions(),
     );
@@ -135,14 +149,14 @@ class MemberApiService {
 
   Future<void> deleteRating({required int ratingId}) async {
     await _dio.delete<void>(
-      '/v7/ratings/$ratingId',
+      '/v8/ratings/$ratingId',
       options: _authenticatedOptions(),
     );
   }
 
   Future<MemberInfo> fetchMe() async {
     final response = await _dio.get<Map<String, dynamic>>(
-      '/v7/members/me',
+      '/v8/members/me',
       options: _authenticatedOptions(),
     );
     return parseMemberInfo(response.data);
@@ -150,11 +164,61 @@ class MemberApiService {
 
   Future<MemberInfo> updateNickname(String nickname) async {
     final response = await _dio.patch<Map<String, dynamic>>(
-      '/v7/members/me',
+      '/v8/members/me',
       data: {'nickname': nickname.trim()},
       options: _authenticatedOptions(),
     );
     return parseMemberInfo(response.data);
+  }
+
+  Future<List<FavoriteRecord>> fetchFavorites() async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/v8/favorites',
+      options: _authenticatedOptions(),
+    );
+    final parsed = CommonResponse<List<FavoriteRecord>>.fromJson(
+      response.data ?? const <String, dynamic>{},
+      (value) => (value as List<dynamic>)
+          .whereType<Map<String, dynamic>>()
+          .map(FavoriteRecord.fromJson)
+          .toList(growable: false),
+    );
+    return parsed.result ?? const [];
+  }
+
+  Future<bool> fetchFavoriteStatus(int movieId) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/v8/favorites/$movieId',
+      options: _authenticatedOptions(),
+    );
+    final parsed = CommonResponse<FavoriteStatus>.fromJson(
+      response.data ?? const <String, dynamic>{},
+      (value) => FavoriteStatus.fromJson(value as Map<String, dynamic>),
+    );
+    return parsed.result?.isFavorite ?? false;
+  }
+
+  Future<void> createFavorite(int movieId) async {
+    await _dio.post<Map<String, dynamic>>(
+      '/v8/favorites',
+      data: {'movieId': movieId},
+      options: _authenticatedOptions(),
+    );
+  }
+
+  Future<void> deleteFavorite(int movieId) async {
+    await _dio.delete<void>(
+      '/v8/favorites/$movieId',
+      options: _authenticatedOptions(),
+    );
+  }
+
+  Future<void> createMovieRecord(MovieRecordRequest request) async {
+    await _dio.post<Map<String, dynamic>>(
+      '/v8/movie-records',
+      data: request.toJson(),
+      options: _authenticatedOptions(),
+    );
   }
 }
 

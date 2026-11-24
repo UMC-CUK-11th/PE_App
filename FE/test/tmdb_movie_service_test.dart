@@ -23,7 +23,7 @@ void main() {
     expect(movies[1].posterPath, isNull);
   });
 
-  test('Discover는 OR 장르 조건을 유지하고 ID 중복 없이 최대 30개를 만든다', () async {
+  test('Discover 페이지는 OR 장르 조건과 페이지 번호를 전달한다', () async {
     final requestedPages = <int>[];
     final requestedGenres = <String?>[];
     final dio = _fakeDio((options) {
@@ -39,16 +39,15 @@ void main() {
       };
     });
 
-    final movies = await TmdbMovieService(dio)
-        .fetchDiscover(genreIds: [12, 16]);
+    final page = await TmdbMovieService(dio)
+        .fetchDiscoverPage(page: 2, genreIds: [12, 16]);
 
-    expect(movies, hasLength(30));
-    expect(movies.map((movie) => movie.id).toSet(), hasLength(30));
-    expect(requestedPages, [1, 2]);
-    expect(requestedGenres, ['12|16', '12|16']);
+    expect(page.results, hasLength(21));
+    expect(requestedPages, [2]);
+    expect(requestedGenres, ['12|16']);
   });
 
-  test('Discover는 중복 결과가 계속되어도 5페이지에서 요청을 멈춘다', () async {
+  test('Discover 기본 조회는 첫 페이지만 요청한다', () async {
     var callCount = 0;
     final dio = _fakeDio((options) {
       callCount++;
@@ -62,7 +61,7 @@ void main() {
     final movies = await TmdbMovieService(dio).fetchDiscover();
 
     expect(movies, hasLength(1));
-    expect(callCount, 5);
+    expect(callCount, 1);
   });
 
   test('Genre 응답의 id와 name을 변환한다', () async {

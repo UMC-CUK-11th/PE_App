@@ -179,7 +179,10 @@ class MemberRatingsViewModel extends ChangeNotifier {
 
   bool _shouldRefreshAfterWriteError(DioException error) {
     final code = memberApiErrorCode(error);
-    return code == 'AUTH403_1' || code == 'COMMON403' || code == 'COMMON404';
+    return code == 'RATING403_1' ||
+        code == 'AUTH403_1' ||
+        code == 'COMMON403' ||
+        code == 'COMMON404';
   }
 
   Future<List<MemberRating>> _fetchAllRatings() async {

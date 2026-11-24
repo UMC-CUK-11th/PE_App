@@ -15,14 +15,13 @@ class TmdbApiException implements Exception {
   String toString() => message;
 }
 
-class TmdbMovieService implements MovieCatalogService {
+class TmdbMovieService implements PagedMovieCatalogService {
   TmdbMovieService(this._dio);
 
   factory TmdbMovieService.fromEnvironment() =>
       TmdbMovieService(createTmdbClient());
 
   final Dio _dio;
-  static const int _maxDiscoverPages = 5;
 
   @override
   Future<List<TmdbMovieDto>> fetchPopular() async {
@@ -50,29 +49,22 @@ class TmdbMovieService implements MovieCatalogService {
 
   @override
   Future<List<TmdbMovieDto>> fetchDiscover({List<int>? genreIds}) async {
-    final uniqueMovies = <int, TmdbMovieDto>{};
-    var pageNumber = 1;
-    var totalPages = 1;
-
-    do {
-      final page = await _fetchMoviePage(
-        '/discover/movie',
-        page: pageNumber,
-        genreIds: genreIds,
-      );
-      totalPages = page.totalPages;
-      for (final movie in page.results) {
-        uniqueMovies.putIfAbsent(movie.id, () => movie);
-        if (uniqueMovies.length == 30) break;
-      }
-      pageNumber++;
-    } while (uniqueMovies.length < 30 &&
-        pageNumber <= totalPages &&
-        pageNumber <= _maxDiscoverPages);
-
-    return uniqueMovies.values.take(30).toList(growable: false);
+    return (await fetchDiscoverPage(page: 1, genreIds: genreIds)).results;
   }
 
+  @override
+  Future<TmdbMoviePageDto> fetchDiscoverPage({
+    required int page,
+    List<int>? genreIds,
+  }) => _fetchMoviePage('/discover/movie', page: page, genreIds: genreIds);
+
+  @override
+  Future<TmdbMoviePageDto> searchMovies({
+    required String query,
+    required int page,
+  }) => _fetchMoviePage('/search/movie', page: page, query: query.trim());
+
+  @override
   Future<TmdbMovieDto> fetchMovieById(int id) async {
     try {
       final response = await _dio.get<Map<String, dynamic>>(
@@ -93,6 +85,7 @@ class TmdbMovieService implements MovieCatalogService {
     String path, {
     required int page,
     List<int>? genreIds,
+    String? query,
   }) async {
     try {
       final withGenres = genreIds == null || genreIds.isEmpty
@@ -102,6 +95,7 @@ class TmdbMovieService implements MovieCatalogService {
         'language': 'ko-KR',
         'page': page,
         if (path == '/discover/movie') 'include_adult': false,
+        if (query != null && query.isNotEmpty) 'query': query,
       };
       if (withGenres != null) queryParameters['with_genres'] = withGenres;
       final response = await _dio.get<Map<String, dynamic>>(

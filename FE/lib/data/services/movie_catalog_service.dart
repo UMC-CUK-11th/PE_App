@@ -8,3 +8,18 @@ abstract interface class MovieCatalogService {
 
   Future<List<TmdbMovieDto>> fetchDiscover({List<int>? genreIds});
 }
+
+abstract interface class PagedMovieCatalogService
+    implements MovieCatalogService {
+  Future<TmdbMoviePageDto> fetchDiscoverPage({
+    required int page,
+    List<int>? genreIds,
+  });
+
+  Future<TmdbMoviePageDto> searchMovies({
+    required String query,
+    required int page,
+  });
+
+  Future<TmdbMovieDto> fetchMovieById(int id);
+}

@@ -15,6 +15,9 @@ class RatingDialog extends StatefulWidget {
     required this.onSubmit,
     this.initialScore = 0,
     this.initialComment,
+    this.showFavoriteOption = false,
+    this.initialAddToFavorites = false,
+    this.onFavoriteChanged,
     super.key,
   });
 
@@ -22,6 +25,9 @@ class RatingDialog extends StatefulWidget {
   final RatingSubmitCallback onSubmit;
   final int initialScore;
   final String? initialComment;
+  final bool showFavoriteOption;
+  final bool initialAddToFavorites;
+  final ValueChanged<bool>? onFavoriteChanged;
 
   @override
   State<RatingDialog> createState() => _RatingDialogState();
@@ -33,6 +39,7 @@ class _RatingDialogState extends State<RatingDialog> {
     text: widget.initialComment ?? '',
   );
   bool _isSubmitting = false;
+  late bool _addToFavorites = widget.initialAddToFavorites;
   String? _errorMessage;
 
   @override
@@ -74,7 +81,7 @@ class _RatingDialogState extends State<RatingDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                '영화는 어떠셨나요?',
+                '평점을 남겨주세요',
                 style: TextStyle(
                   color: AppColors.onSurface,
                   fontSize: 20,
@@ -114,6 +121,23 @@ class _RatingDialogState extends State<RatingDialog> {
                   border: OutlineInputBorder(),
                 ),
               ),
+              if (widget.showFavoriteOption)
+                CheckboxListTile(
+                  key: const ValueKey('rating-add-favorite'),
+                  value: _addToFavorites,
+                  enabled: !_isSubmitting,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text(
+                    '즐겨찾기에도 추가',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  onChanged: (value) {
+                    final selected = value ?? false;
+                    setState(() => _addToFavorites = selected);
+                    widget.onFavoriteChanged?.call(selected);
+                  },
+                ),
               if (_errorMessage != null) ...[
                 const SizedBox(height: 8),
                 Text(
