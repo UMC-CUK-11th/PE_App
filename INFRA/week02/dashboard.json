@@ -593,7 +593,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "count(up{job=\"app\"} == 1)",
+          "expr": "count(up{job=\"app\"} == 1) or vector(0)",
           "legendFormat": "인스턴스 수"
         }
       ],

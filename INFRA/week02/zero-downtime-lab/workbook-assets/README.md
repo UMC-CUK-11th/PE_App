@@ -61,5 +61,6 @@ sudo curl -fsSL https://raw.githubusercontent.com/UMC-11th-Workbook-Infra/zero-d
 
 Import 할 때 데이터소스로 **Grafana Cloud 의 Prometheus** 를 고르세요.
 
-「앱」 줄 맨 왼쪽의 **「DB 커넥션 — 연결 vs 실행」** 패널을 눈여겨보세요. 두 선이 벌어지는
-순간이 커넥션 풀 고갈이고, 3주차에서 가장 많이 보게 됩니다. 2주차 4.5 를 보세요.
+「앱」 줄 맨 왼쪽의 **「DB 커넥션 — 연결 vs 실행」** 패널을 눈여겨보세요. 두 선의 차이는
+유휴 연결 때문에도 생길 수 있어 이 패널만으로 커넥션 풀 고갈을 단정할 수 없습니다.
+풀 고갈은 앱의 풀 사용량(active/max)과 대기 요청(pending)을 함께 확인하세요. 2주차 4.5 를 보세요.

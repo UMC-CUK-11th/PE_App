@@ -16,10 +16,24 @@ export const DEFAULTS = {
 }
 
 /** 숫자를 범위와 함께 검사한다 */
-function num(value, fallback, { min, max, label }, errors) {
-  const n = value === undefined || value === null || value === '' ? fallback : Number(value)
+function num(value, fallback, { min, max, label, integer = false }, errors) {
+  const missing = value === undefined || value === null || value === ''
+  const candidate = missing ? fallback : value
+  if (typeof candidate !== 'number' && typeof candidate !== 'string') {
+    errors.push(`${label}에 숫자를 넣어주세요.`)
+    return fallback
+  }
+  if (typeof candidate === 'string' && candidate.trim() === '') {
+    errors.push(`${label}에 숫자를 넣어주세요.`)
+    return fallback
+  }
+  const n = Number(candidate)
   if (!Number.isFinite(n)) {
     errors.push(`${label}에 숫자를 넣어주세요.`)
+    return fallback
+  }
+  if (integer && !Number.isInteger(n)) {
+    errors.push(`${label}은(는) 정수여야 합니다. (받은 값: ${n})`)
     return fallback
   }
   if (n < min || n > max) {
@@ -40,6 +54,9 @@ function num(value, fallback, { min, max, label }, errors) {
  */
 export function validateScenario(input = {}) {
   const errors = []
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return { ok: false, errors: ['시나리오는 JSON 객체여야 합니다.'] }
+  }
   const t = input.target ?? {}
 
   // URL
@@ -60,7 +77,9 @@ export function validateScenario(input = {}) {
   }
 
   // 메서드
-  const method = String(t.method ?? DEFAULTS.target.method).toUpperCase()
+  const rawMethod = t.method ?? DEFAULTS.target.method
+  const method = typeof rawMethod === 'string' ? rawMethod.toUpperCase() : ''
+  if (typeof rawMethod !== 'string') errors.push('메서드는 문자열이어야 합니다.')
   if (!METHODS.includes(method)) {
     errors.push(`지원하지 않는 메서드입니다: ${method} (가능: ${METHODS.join(', ')})`)
   }
@@ -77,6 +96,10 @@ export function validateScenario(input = {}) {
 
   const timeoutMs = num(t.timeoutMs, DEFAULTS.target.timeoutMs, { min: 100, max: 60_000, label: '타임아웃' }, errors)
 
+  if (t.body !== undefined && typeof t.body !== 'string') {
+    errors.push('요청 본문은 문자열이어야 합니다.')
+  }
+
   // 성공 상태코드
   const codes = input.success?.statusCodes ?? DEFAULTS.success.statusCodes
   if (!Array.isArray(codes) || codes.length === 0) {
@@ -89,7 +112,9 @@ export function validateScenario(input = {}) {
   // Node 의 타이머 해상도가 딱 그 규모라 그 이상은 슬롯을 제때 못 잡는다. 밀린 슬롯은
   // dropped 로 세지므로 도구가 거짓말을 하지는 않지만, 숫자를 믿을 수 있는 범위가 아니다.
   // 실측으로 500 RPS(2ms 슬롯)까지는 dropped 가 무시할 수준이었다.
-  const rps = num(input.load?.rps, DEFAULTS.load.rps, { min: 1, max: 1000, label: '초당 요청 수' }, errors)
+  const rps = num(input.load?.rps, DEFAULTS.load.rps, {
+    min: 1, max: 1000, label: '초당 요청 수', integer: true,
+  }, errors)
 
   const errorCountBeforeDuration = errors.length
   const durationSec = num(input.load?.durationSec, DEFAULTS.load.durationSec, { min: 5, max: 3600, label: '실행 시간' }, errors)
@@ -114,7 +139,13 @@ export function validateScenario(input = {}) {
     ok: true,
     scenario: {
       name: typeof input.name === 'string' && input.name.trim() !== '' ? input.name.trim() : DEFAULTS.name,
-      target: { url, method, headers, body: typeof t.body === 'string' ? t.body : '', timeoutMs },
+      target: {
+        url,
+        method,
+        headers,
+        body: t.body === undefined ? DEFAULTS.target.body : t.body,
+        timeoutMs,
+      },
       success: { statusCodes: codes },
       load: { rps, durationSec },
       analysis: { slowThresholdMs, baselineSec, minConsecutiveFailures },

@@ -8,6 +8,21 @@ const API = __ENV.API || 'http://host.docker.internal:8080';
 const RPS = Number(__ENV.RPS || 1000);
 const DURATION = __ENV.DURATION || '40s';
 
+function durationSeconds(value) {
+  const unitSeconds = { ms: 0.001, s: 1, m: 60, h: 3600 };
+  const token = /(\d+(?:\.\d+)?)(ms|s|m|h)/g;
+  let total = 0;
+  let consumed = 0;
+  let match;
+  while ((match = token.exec(value)) !== null) {
+    if (match.index !== consumed) throw new Error(`지원하지 않는 DURATION 형식: ${value}`);
+    total += Number(match[1]) * unitSeconds[match[2]];
+    consumed = token.lastIndex;
+  }
+  if (consumed !== value.length || total <= 0) throw new Error(`지원하지 않는 DURATION 형식: ${value}`);
+  return total;
+}
+
 export const options = {
   discardResponseBodies: true,
   scenarios: {
@@ -63,6 +78,6 @@ export function handleSummary(d) {
     p95: m.http_req_duration.values['p(95)'],
     p99: m.http_req_duration.values['p(99)'],
   };
-  const line = `  ${RPS} rps  처리량 ${(out.ok / 40).toFixed(1)}/s  p50 ${out.p50.toFixed(0)}ms  p95 ${out.p95.toFixed(0)}ms  p99 ${out.p99.toFixed(0)}ms  실패 ${out.failed}  dropped ${out.dropped}\n`;
+  const line = `  ${RPS} rps  처리량 ${(out.ok / durationSeconds(DURATION)).toFixed(1)}/s  p50 ${out.p50.toFixed(0)}ms  p95 ${out.p95.toFixed(0)}ms  p99 ${out.p99.toFixed(0)}ms  실패 ${out.failed}  dropped ${out.dropped}\n`;
   return { stdout: line, [`/results/k6-${RPS}rps.json`]: JSON.stringify(out) };
 }

@@ -36,7 +36,7 @@ export function bucketsToSeries(buckets) {
  */
 export function outageBands(outages) {
   return outages.map((o) => [
-    Math.floor(o.startTs / 1000),
-    o.endTs === null ? null : Math.floor(o.endTs / 1000),
+    o.startTs / 1000,
+    o.endTs === null ? null : o.endTs / 1000,
   ])
 }

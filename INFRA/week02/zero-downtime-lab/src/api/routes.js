@@ -6,6 +6,17 @@ import { createRunStore } from '../run/run-store.js'
 import { createProber } from '../prober/index.js'
 import { toK6Script } from '../export/k6-script.js'
 
+const SENSITIVE_HEADER = /^(authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key)$/i
+
+/** 내보내기 파일에 인증 값이 남지 않도록 시나리오 사본을 만든다. */
+function exportableScenario(scenario) {
+  const headers = Object.fromEntries(Object.entries(scenario.target.headers ?? {}).map(([key, value]) => [
+    key,
+    SENSITIVE_HEADER.test(key) ? '***' : value,
+  ]))
+  return { ...scenario, target: { ...scenario.target, headers } }
+}
+
 /**
  * 라우트가 붙은 Express 앱을 만든다. listen 은 호출부의 몫이다.
  *
@@ -59,7 +70,7 @@ export function createApp({ store = createRunStore({ max: 10 }), proberFactory =
     const run = store.get(req.params.id)
     if (run === undefined) return res.status(404).json({ errors: ['없는 실행입니다.'] })
     res.set('Content-Disposition', `attachment; filename="lab-${run.id.slice(0, 8)}.json"`)
-    res.json({ scenario: run.scenario, summary: run.summary(), buckets: run.buckets() })
+    res.json({ scenario: exportableScenario(run.scenario), summary: run.summary(), buckets: run.buckets() })
   })
 
   app.get('/api/runs/:id/export.k6.js', (req, res) => {
@@ -67,7 +78,7 @@ export function createApp({ store = createRunStore({ max: 10 }), proberFactory =
     if (run === undefined) return res.status(404).json({ errors: ['없는 실행입니다.'] })
     res.set('Content-Type', 'application/javascript; charset=utf-8')
     res.set('Content-Disposition', 'attachment; filename="deploy-test.js"')
-    res.send(toK6Script(run.scenario))
+    res.send(toK6Script(exportableScenario(run.scenario)))
   })
 
   app.get('/api/runs/:id', (req, res) => {
@@ -83,14 +94,16 @@ export function createApp({ store = createRunStore({ max: 10 }), proberFactory =
     const lastEventId = Number(req.get('Last-Event-ID') ?? req.query.lastEventId ?? 0) || 0
     const stream = openSseStream(res, { lastEventId })
 
-    // 연결 직후 현재 상태를 따라잡게 한다
-    stream.send('state', { status: run.status, runId: run.id })
+    // 연결 직후 저장된 측정값을 먼저 재생한다. 종료 state를
+    // 먼저 보내면 클라이언트가 연결을 닫아 재생 결과를 놓친다.
     run.buckets().forEach((bucket, index) => {
       const id = index + 1
       if (id > lastEventId) stream.send('bucket', bucket, id)
     })
     run.outages().forEach((outage) => stream.send('outage', outage))
     stream.send('summary', run.summary())
+    stream.send('state', { status: run.status, runId: run.id })
+    if (stream.closed) return
 
     let bucketId = run.buckets().length
     /** @type {Array<() => void>} 구독 해제 함수들 */

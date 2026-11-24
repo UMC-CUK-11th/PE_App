@@ -15,21 +15,35 @@ export function openSseStream(res, { lastEventId = 0 } = {}) {
     'X-Accel-Buffering': 'no',
   })
 
-  const heartbeat = setInterval(() => {
-    if (!res.writableEnded) res.write(': ping\n\n')
-  }, HEARTBEAT_MS)
+  let closed = false
+
+  function close() {
+    if (closed) return
+    closed = true
+    clearInterval(heartbeat)
+    if (!res.writableEnded) res.end()
+  }
+
+  function writeFrame(frame) {
+    if (closed || res.writableEnded) return false
+    // 느린 클라이언에 무제한 버퍼를 쌓지 않는다. 버퍼가 차면
+    // 연결을 닫고 EventSource가 Last-Event-ID로 재연결하게 한다.
+    if (!res.write(frame)) {
+      close()
+      return false
+    }
+    return true
+  }
+
+  const heartbeat = setInterval(() => writeFrame(': ping\n\n'), HEARTBEAT_MS)
 
   return {
     lastEventId,
+    get closed() { return closed },
     send(event, data, id) {
-      if (res.writableEnded) return
-      if (id !== undefined) res.write(`id: ${id}\n`)
-      res.write(`event: ${event}\n`)
-      res.write(`data: ${JSON.stringify(data)}\n\n`)
+      const frame = `${id === undefined ? '' : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+      return writeFrame(frame)
     },
-    close() {
-      clearInterval(heartbeat)
-      if (!res.writableEnded) res.end()
-    },
+    close,
   }
 }

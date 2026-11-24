@@ -13,6 +13,10 @@ function toTemplateLiteralBody(text) {
     .replace(/\\/g, '\\\\')
     .replace(/`/g, '\\`')
     .replace(/\$\{/g, '\\${')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .split(LINE_SEPARATOR).join('\\u2028')
+    .split(PARAGRAPH_SEPARATOR).join('\\u2029')
     .replace(/\{\{uuid\}\}/g, '${uuid()}')
     .replace(/\{\{counter\}\}/g, '${__VU}_${__ITER}')
     .replace(/\{\{timestamp\}\}/g, '${Date.now()}')
@@ -79,7 +83,7 @@ export function toK6Script(scenario) {
   const { rps, durationSec } = scenario.load
   const codes = JSON.stringify(scenario.success.statusCodes)
   const hasBody = method !== 'GET' && method !== 'HEAD'
-  const call = `http.${method.toLowerCase()}`
+  const call = method === 'DELETE' ? 'http.del' : `http.${method.toLowerCase()}`
   const safeUrl = toSingleQuotedLiteral(url)
 
   return `// zero-downtime-lab 에서 내보낸 k6 스크립트
@@ -110,6 +114,8 @@ export const options = {
   thresholds: {
     // 배포 중 단 한 건도 실패하지 않아야 통과한다
     checks: ['rate==1.00'],
+    // 요청 발사 자체가 누락된 측정도 통과로 보지 않는다
+    dropped_iterations: ['count==0'],
   },
 }
 

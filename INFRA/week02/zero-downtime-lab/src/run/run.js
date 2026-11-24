@@ -38,6 +38,8 @@ export function createRun({ scenario, prober }) {
   let summaryTimer = null
   /** stop() 이 불렸는지. 종료 상태를 finished/stopped 로 가를 때 쓴다. */
   let stopRequested = false
+  /** 초기 연결 실패로 자동 중지했는지. 최종 집계 후에만 상태로 공개한다. */
+  let unreachableStopRequested = false
 
   function emit(event, payload) {
     // 사본을 순회한다. 리스너가 자기 자신이나 다른 리스너를 해제하면
@@ -74,7 +76,9 @@ export function createRun({ scenario, prober }) {
   function warnings() {
     const out = []
     const scheduled = totals.sent + totals.dropped
-    if (scheduled > 0 && totals.dropped / scheduled > DROPPED_WARN_RATIO) out.push('dropped')
+    if (totals.dropped > 0) {
+      out.push(totals.dropped / scheduled > DROPPED_WARN_RATIO ? 'dropped' : 'dropped-low')
+    }
     if (status === 'unreachable') out.push('unreachable')
     const base = baseline?.result()
     if (base?.complete) {
@@ -142,7 +146,7 @@ export function createRun({ scenario, prober }) {
     // 만들어지지 않았다 — 종료 state 는 start() 의 finally 에서 모든 것을
     // 내보낸 다음 마지막으로 한 번만 나가야 리스너가 그 전에 끊기지 않는다.
     if (!sawSuccess && networkStreak >= UNREACHABLE_STREAK && status === 'running') {
-      status = 'unreachable'
+      unreachableStopRequested = true
       prober.stop()
     }
   }
@@ -173,6 +177,9 @@ export function createRun({ scenario, prober }) {
       try {
         const stats = await prober.start(scenario, onRecord)
         totals.dropped = stats.dropped
+      } catch (error) {
+        status = 'failed'
+        throw error
       } finally {
         clearInterval(summaryTimer)
         const lastBucket = bucketer.flush()
@@ -187,7 +194,11 @@ export function createRun({ scenario, prober }) {
         // 종료 state 는 이 실행이 마지막으로 내보내는 이벤트여야 한다.
         // 그래야 SSE 핸들러가 state 를 받고 구독을 끊기 전에 요약이 이미
         // 나가 있다. summary 를 먼저, state 를 정말 마지막으로 emit 한다.
-        if (status === 'running') status = stopRequested ? 'stopped' : 'finished'
+        if (status === 'running') {
+          if (stopRequested) status = 'stopped'
+          else if (unreachableStopRequested && totals.success === 0) status = 'unreachable'
+          else status = 'finished'
+        }
         emit('summary', summary())
         emit('state', { status, runId: id })
       }

@@ -22,7 +22,7 @@ services:
     container_name: zero-downtime-lab
     restart: unless-stopped
     ports:
-      - "9376:9376"
+      - "127.0.0.1:9376:9376"
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

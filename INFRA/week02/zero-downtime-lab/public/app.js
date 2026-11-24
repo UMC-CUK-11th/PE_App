@@ -4,6 +4,7 @@ const form = document.querySelector('#scenario-form')
 const errorBox = document.querySelector('#form-errors')
 const startBtn = document.querySelector('#start-btn')
 const stopBtn = document.querySelector('#stop-btn')
+let activeSource = null
 
 /** 서버 기본값으로 폼을 채운다. 기본값의 출처를 서버 한 곳으로 유지하기 위해서다. */
 async function fillDefaults() {
@@ -56,7 +57,16 @@ form.addEventListener('submit', async (event) => {
 
 stopBtn.addEventListener('click', async () => {
   stopBtn.disabled = true
-  await fetch(`/api/runs/${window.currentRunId}/stop`, { method: 'POST' })
+  try {
+    const res = await fetch(`/api/runs/${window.currentRunId}/stop`, { method: 'POST' })
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}))
+      throw new Error(payload.errors?.[0] ?? `중지 요청이 실패했습니다. (HTTP ${res.status})`)
+    }
+  } catch (error) {
+    showErrors([error instanceof Error ? error.message : '중지 요청을 보내지 못했습니다.'])
+    stopBtn.disabled = false
+  }
 })
 
 fillDefaults()
@@ -120,7 +130,9 @@ window.addEventListener('run:started', ({ detail }) => {
   document.querySelector('#export-k6').href = `/api/runs/${detail.runId}/export.k6.js`
 
   resetResults()
+  activeSource?.close()
   const source = new EventSource(`/api/runs/${detail.runId}/stream`)
+  activeSource = source
 
   source.addEventListener('bucket', (e) => {
     window.dispatchEvent(new CustomEvent('run:bucket', { detail: JSON.parse(e.data) }))
@@ -137,6 +149,7 @@ window.addEventListener('run:started', ({ detail }) => {
     if (status !== 'running') {
       setFormDisabled(false)
       source.close()
+      if (activeSource === source) activeSource = null
     }
   })
 })

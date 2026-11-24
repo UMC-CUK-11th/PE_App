@@ -36,7 +36,9 @@
 
 | 변수 | 쓰는 파이프라인 |
 |---|---|
+| `GC_TOKEN` | 전체 |
 | `GC_PROM_URL` · `GC_PROM_USER` | 01, 02, 03 |
+| `MYSQL_DSN` | 02 |
 | `GC_LOKI_URL` · `GC_LOKI_USER` | 04 |
 | `APP_METRICS_ADDR` · `APP_METRICS_PATH` | 03 — **안 넘기면 Node.js 기본값** |
 
@@ -55,8 +57,6 @@ Spring Boot 는 Actuator 가 `/actuator/prometheus` 로 노출하고 기본 포�
 > **실측 확인.** `grafana/alloy:v1.20.1` 로 돌려 스크랩 요청이 실제로 가는 경로를 확인했습니다 —
 > 환경변수를 주면 `/actuator/prometheus`, 안 주면 `/metrics` 로 갑니다.
 > 파이프라인 다섯 개 전부 `alloy validate` 통과.
-| `GC_TOKEN` | 전부 |
-| `MYSQL_DSN` | 02 |
 
 > ⚠️ **파이프라인에 값을 직접 박지 마세요.** 파이프라인 정의는 Grafana Cloud 에 저장되고
 > 화면에서 그대로 보입니다. **비밀값은 인스턴스 쪽 SSM 에 두고 환경변수로 넘깁니다.**

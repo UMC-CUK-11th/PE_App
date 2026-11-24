@@ -31,20 +31,21 @@ export function createScheduler({ intervalMs, maxInFlight }) {
   function loop(onFire) {
     if (!running) return
 
-    let target = startedAt + slot * intervalMs
-    const now = Date.now()
-
-    if (now - target > intervalMs) {
-      // 이벤트 루프가 밀렸다. 놓친 슬롯을 몰아서 쏘면 그 순간의 측정이 왜곡되므로,
-      // 발사하지 않고 버린 것으로 센다.
-      const missed = Math.floor((now - target) / intervalMs)
-      dropped += missed
-      slot += missed
-      target = startedAt + slot * intervalMs
-    }
+    const target = startedAt + slot * intervalMs
 
     timer = setTimeout(() => {
       if (!running) return
+
+      // 타이머 예약 후 이벤트 루프가 밀릴 수 있으므로 실제 시각을 다시 본다.
+      // 지난 슬롯은 몰아쏘지 않고 dropped로 센다.
+      const callbackNow = Date.now()
+      const callbackTarget = startedAt + slot * intervalMs
+      if (callbackNow - callbackTarget >= intervalMs) {
+        const missed = Math.floor((callbackNow - callbackTarget) / intervalMs)
+        dropped += missed
+        slot += missed
+      }
+
       if (inFlight >= maxInFlight) {
         dropped += 1
       } else {

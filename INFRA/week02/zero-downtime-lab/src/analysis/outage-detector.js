@@ -14,32 +14,36 @@ function emptyByType() {
 export function createOutageDetector({ minConsecutiveFailures }) {
   /** 마지막으로 성공한 요청의 시각. 한 번도 성공한 적 없으면 null */
   let lastSuccessTs = null
-  /** 아직 복구되지 않은 연속 실패들 */
-  let pending = []
+  /** 아직 복구되지 않은 연속 실패의 집계 */
+  let pendingCount = 0
+  let pendingByType = emptyByType()
+  let lastFailureTs = null
   const confirmed = []
 
   /** pending 이 순단 기준을 넘는지 */
   function qualifies() {
     // 한 번도 성공한 적이 없으면 "끊긴" 게 아니라 애초에 닿은 적이 없는 것이다
-    return lastSuccessTs !== null && pending.length >= minConsecutiveFailures
+    return lastSuccessTs !== null && pendingCount >= minConsecutiveFailures
   }
 
   /** pending 을 순단 객체로 만든다 */
   function build(endTs, ongoing) {
-    const byType = emptyByType()
-    for (const record of pending) {
-      if (record.failureType in byType) byType[record.failureType] += 1
-    }
     // 진행 중이면 마지막 실패 시각까지로 잰다
-    const measuredEnd = endTs ?? pending[pending.length - 1].ts
+    const measuredEnd = endTs ?? lastFailureTs
     return {
       startTs: lastSuccessTs,
       endTs,
       durationMs: measuredEnd - lastSuccessTs,
-      failureCount: pending.length,
-      byType,
+      failureCount: pendingCount,
+      byType: { ...pendingByType },
       ongoing,
     }
+  }
+
+  function resetPending() {
+    pendingCount = 0
+    pendingByType = emptyByType()
+    lastFailureTs = null
   }
 
   return {
@@ -49,7 +53,11 @@ export function createOutageDetector({ minConsecutiveFailures }) {
      */
     push(record) {
       if (record.outcome === 'failure') {
-        pending.push(record)
+        // 첫 성공 전의 실패는 "순단"이 아니므로 저장하지 않는다.
+        if (lastSuccessTs === null) return null
+        pendingCount += 1
+        if (record.failureType in pendingByType) pendingByType[record.failureType] += 1
+        lastFailureTs = record.ts
         return null
       }
 
@@ -59,7 +67,7 @@ export function createOutageDetector({ minConsecutiveFailures }) {
         outage = build(record.ts, false)
         confirmed.push(outage)
       }
-      pending = []
+      resetPending()
       lastSuccessTs = record.ts
       return outage
     },
@@ -72,7 +80,7 @@ export function createOutageDetector({ minConsecutiveFailures }) {
       if (!qualifies()) return null
       const outage = build(null, true)
       confirmed.push(outage)
-      pending = []
+      resetPending()
       return outage
     },
 

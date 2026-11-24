@@ -33,7 +33,7 @@ export function createInternalProber({ fetchImpl = fetch } = {}) {
         redirect: 'manual', // 3xx 를 따라가지 않는다 (스펙 8장)
       })
       // 커넥션을 반납하려면 본문을 소비해야 한다
-      await res.arrayBuffer().catch(() => {})
+      await res.arrayBuffer()
       return { status: res.status, durationMs: Date.now() - startedAt, error: null }
     } catch (err) {
       if (controller.signal.aborted) {

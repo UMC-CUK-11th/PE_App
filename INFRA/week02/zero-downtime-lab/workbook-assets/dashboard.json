@@ -249,7 +249,7 @@
     {
       "id": 14,
       "type": "timeseries",
-      "title": "DB 커넥션 — 연결 vs 실행",
+      "description": "threads_connected와 threads_running의 차이에는 유휴 연결도 포함되므로 이 패널만으로 커넥션 풀 고갈을 단정하지 않습니다. 앱 풀의 active/max와 pending 요청을 함께 확인하세요. 인스턴스 2대가 같은 RDS를 각자 긁으므로 max()로 감쌉니다 (2주차 4.4).",
       "description": "두 선이 벌어지는 순간이 커넥션 풀 고갈입니다. 연결은 다 잡혀 있는데 실제로 일하는 건 소수 — 나머지는 앱 안에서 커넥션을 기다리며 줄을 선 요청입니다. 인스턴스 2대가 같은 RDS 를 각자 긁으므로 max() 로 감쌉니다 (2주차 4.4).",
       "datasource": {
         "type": "prometheus",
@@ -626,7 +626,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "count(up{job=\"app\"} == 1)",
+          "expr": "count(up{job=\"app\"} == 1) or vector(0)",
           "legendFormat": "인스턴스 수"
         }
       ],
