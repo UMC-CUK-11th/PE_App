@@ -27,6 +27,7 @@ class MovieSearchViewModel extends ChangeNotifier {
     final normalized = value.trim();
     if (normalized.isEmpty) {
       _generation++;
+      isLoadingMore = false;
       query = '';
       movies = const [];
       state = ViewLoadState.empty;
@@ -44,6 +45,7 @@ class MovieSearchViewModel extends ChangeNotifier {
     final normalized = value.trim();
     if (normalized.isEmpty) return;
     final generation = ++_generation;
+    isLoadingMore = false;
     query = normalized;
     state = ViewLoadState.loading;
     movies = const [];
@@ -66,7 +68,12 @@ class MovieSearchViewModel extends ChangeNotifier {
   }
 
   Future<void> loadMore() async {
-    if (isLoadingMore || !hasMore || query.isEmpty) return;
+    if (state != ViewLoadState.success ||
+        isLoadingMore ||
+        !hasMore ||
+        query.isEmpty) {
+      return;
+    }
     final generation = _generation;
     final pageNumber = _nextPage;
     isLoadingMore = true;

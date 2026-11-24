@@ -25,8 +25,17 @@ class MovieDetailViewModel extends ChangeNotifier {
   bool isFavoriteSaving = false;
   String? favoriteMessage;
   bool _disposed = false;
+  int _favoriteRequestVersion = 0;
+  Future<void>? _favoriteLoadFuture;
 
-  Future<void> loadFavorite() async {
+  Future<void> loadFavorite() {
+    final future = _loadFavorite();
+    _favoriteLoadFuture = future;
+    return future;
+  }
+
+  Future<void> _loadFavorite() async {
+    final requestVersion = ++_favoriteRequestVersion;
     if (memberId == null) {
       isFavoriteLoading = false;
       _notify();
@@ -36,12 +45,17 @@ class MovieDetailViewModel extends ChangeNotifier {
     favoriteMessage = null;
     _notify();
     try {
-      isFavorite = await ratingService.fetchFavoriteStatus(movie.id);
+      final result = await ratingService.fetchFavoriteStatus(movie.id);
+      if (requestVersion != _favoriteRequestVersion || _disposed) return;
+      isFavorite = result;
     } on DioException catch (error) {
+      if (requestVersion != _favoriteRequestVersion || _disposed) return;
       favoriteMessage = memberApiErrorMessage(error);
     } on Object {
+      if (requestVersion != _favoriteRequestVersion || _disposed) return;
       favoriteMessage = '즐겨찾기 상태를 불러오지 못했습니다.';
     }
+    if (requestVersion != _favoriteRequestVersion || _disposed) return;
     isFavoriteLoading = false;
     _notify();
   }
@@ -100,7 +114,12 @@ class MovieDetailViewModel extends ChangeNotifier {
     submitMessage = null;
     _notify();
     try {
-      if (addToFavorites) {
+      if (addToFavorites && isFavoriteLoading) {
+        await _favoriteLoadFuture;
+      }
+      final shouldAddFavorite = addToFavorites && !isFavorite;
+      if (shouldAddFavorite) {
+        _favoriteRequestVersion++;
         await ratingService.createMovieRecord(
           MovieRecordRequest(
             movieId: movie.id,

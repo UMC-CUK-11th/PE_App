@@ -111,6 +111,7 @@ class MovieListViewModel extends ChangeNotifier {
     required bool clearWhileLoading,
   }) async {
     final requestVersion = ++_requestVersion;
+    isLoadingMore = false;
     final previousMovies = movies;
     isDiscoverLoading = true;
     errorMessage = null;

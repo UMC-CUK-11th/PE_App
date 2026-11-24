@@ -100,7 +100,11 @@ class _PagedCatalog implements PagedMovieCatalogService {
       failPageOnce = null;
       throw StateError('일시적인 실패');
     }
-    return TmdbMoviePageDto(page: page, totalPages: 2, results: [_dto(page)]);
+    return TmdbMoviePageDto(
+      page: page,
+      totalPages: 2,
+      results: page == 2 ? [_dto(1), _dto(2)] : [_dto(1)],
+    );
   }
 
   @override
