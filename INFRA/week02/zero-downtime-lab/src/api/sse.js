@@ -1,4 +1,5 @@
 const HEARTBEAT_MS = 15_000
+const MAX_QUEUED_BYTES = 256 * 1024
 
 /**
  * SSE 응답을 연다.
@@ -16,21 +17,51 @@ export function openSseStream(res, { lastEventId = 0 } = {}) {
   })
 
   let closed = false
+  let waitingForDrain = false
+  let queuedBytes = 0
+  const queue = []
 
   function close() {
     if (closed) return
     closed = true
     clearInterval(heartbeat)
+    res.off('drain', flush)
+    queue.length = 0
+    queuedBytes = 0
     if (!res.writableEnded) res.end()
+  }
+
+  function enqueue(frame) {
+    const bytes = Buffer.byteLength(frame)
+    if (queuedBytes + bytes > MAX_QUEUED_BYTES) {
+      close()
+      return false
+    }
+    queue.push(frame)
+    queuedBytes += bytes
+    return true
+  }
+
+  function flush() {
+    if (closed || res.writableEnded) return
+    waitingForDrain = false
+    while (queue.length > 0) {
+      const frame = queue.shift()
+      queuedBytes -= Buffer.byteLength(frame)
+      if (!res.write(frame)) {
+        waitingForDrain = true
+        res.once('drain', flush)
+        return
+      }
+    }
   }
 
   function writeFrame(frame) {
     if (closed || res.writableEnded) return false
-    // 느린 클라이언에 무제한 버퍼를 쌓지 않는다. 버퍼가 차면
-    // 연결을 닫고 EventSource가 Last-Event-ID로 재연결하게 한다.
+    if (waitingForDrain || queue.length > 0) return enqueue(frame)
     if (!res.write(frame)) {
-      close()
-      return false
+      waitingForDrain = true
+      res.once('drain', flush)
     }
     return true
   }

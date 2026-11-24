@@ -17,6 +17,10 @@ function exportableScenario(scenario) {
   return { ...scenario, target: { ...scenario.target, headers } }
 }
 
+function sensitiveHeaderNames(scenario) {
+  return Object.keys(scenario.target.headers ?? {}).filter((key) => SENSITIVE_HEADER.test(key))
+}
+
 /**
  * 라우트가 붙은 Express 앱을 만든다. listen 은 호출부의 몫이다.
  *
@@ -78,7 +82,7 @@ export function createApp({ store = createRunStore({ max: 10 }), proberFactory =
     if (run === undefined) return res.status(404).json({ errors: ['없는 실행입니다.'] })
     res.set('Content-Type', 'application/javascript; charset=utf-8')
     res.set('Content-Disposition', 'attachment; filename="deploy-test.js"')
-    res.send(toK6Script(exportableScenario(run.scenario)))
+    res.send(toK6Script(run.scenario, { sensitiveHeaders: sensitiveHeaderNames(run.scenario) }))
   })
 
   app.get('/api/runs/:id', (req, res) => {

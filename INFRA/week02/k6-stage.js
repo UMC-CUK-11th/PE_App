@@ -23,6 +23,9 @@ function durationSeconds(value) {
   return total;
 }
 
+// options가 평가되고 부하가 시작되기 전에 형식을 검증한다.
+const DURATION_SECONDS = durationSeconds(DURATION);
+
 export const options = {
   discardResponseBodies: true,
   scenarios: {
@@ -78,6 +81,6 @@ export function handleSummary(d) {
     p95: m.http_req_duration.values['p(95)'],
     p99: m.http_req_duration.values['p(99)'],
   };
-  const line = `  ${RPS} rps  처리량 ${(out.ok / durationSeconds(DURATION)).toFixed(1)}/s  p50 ${out.p50.toFixed(0)}ms  p95 ${out.p95.toFixed(0)}ms  p99 ${out.p99.toFixed(0)}ms  실패 ${out.failed}  dropped ${out.dropped}\n`;
+  const line = `  ${RPS} rps  처리량 ${(out.ok / DURATION_SECONDS).toFixed(1)}/s  p50 ${out.p50.toFixed(0)}ms  p95 ${out.p95.toFixed(0)}ms  p99 ${out.p99.toFixed(0)}ms  실패 ${out.failed}  dropped ${out.dropped}\n`;
   return { stdout: line, [`/results/k6-${RPS}rps.json`]: JSON.stringify(out) };
 }

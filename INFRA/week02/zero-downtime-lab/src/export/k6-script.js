@@ -61,11 +61,20 @@ function toCommentSafe(text) {
  * 바디뿐 아니라 헤더에서도 동작하므로, JSON.stringify 로 그냥 찍으면
  * {{uuid}} 가 문자 그대로 남아 요청 헤더에 리터럴로 실려 나간다.
  */
-function toHeadersLiteral(headers) {
+function headerEnvName(key) {
+  return `K6_HEADER_${key.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`
+}
+
+function toHeadersLiteral(headers, sensitiveHeaders) {
+  const sensitive = new Set(sensitiveHeaders.map((key) => key.toLowerCase()))
   const entries = Object.entries(headers ?? {})
   if (entries.length === 0) return '{}'
-  const lines = entries.map(([key, value]) =>
-    `      ${JSON.stringify(key)}: \`${toTemplateLiteralBody(value)}\``)
+  const lines = entries.map(([key, value]) => {
+    if (sensitive.has(key.toLowerCase())) {
+      return `      ${JSON.stringify(key)}: __ENV[${JSON.stringify(headerEnvName(key))}]`
+    }
+    return `      ${JSON.stringify(key)}: \`${toTemplateLiteralBody(value)}\``
+  })
   return `{\n${lines.join(',\n')}\n    }`
 }
 
@@ -76,21 +85,27 @@ function toHeadersLiteral(headers) {
  * 램프업으로 바꾸는 방법을 주석으로 남긴다.
  *
  * @param {object} scenario
+ * @param {{ sensitiveHeaders?: string[] }} options
  * @returns {string}
  */
-export function toK6Script(scenario) {
+export function toK6Script(scenario, { sensitiveHeaders = [] } = {}) {
   const { url, method, headers, body, timeoutMs } = scenario.target
   const { rps, durationSec } = scenario.load
   const codes = JSON.stringify(scenario.success.statusCodes)
   const hasBody = method !== 'GET' && method !== 'HEAD'
   const call = method === 'DELETE' ? 'http.del' : `http.${method.toLowerCase()}`
   const safeUrl = toSingleQuotedLiteral(url)
+  const envNames = [...new Set(sensitiveHeaders.map(headerEnvName))]
+  const secretGuide = envNames.length === 0
+    ? ''
+    : `// 민감 헤더는 파일에 포함되지 않는다. 실행 전 환경변수로 넘겨야 한다.\n// 필요한 환경변수: ${envNames.join(', ')}\n// 예: k6 run -e ${envNames[0]}='Bearer ...' deploy-test.js\n//\n`
 
   return `// zero-downtime-lab 에서 내보낸 k6 스크립트
 // 시나리오: ${toCommentSafe(scenario.name)}
 //
 // 실행:  k6 run deploy-test.js
 //
+${secretGuide}//
 // 이 랩은 "배포 중 끊기는가" 를 재는 도구라 고정 레이트로만 쏜다.
 // 부하테스트를 하려면 아래 scenarios 를 ramping-arrival-rate 로 바꾸고
 // stages 로 단계를 올려가며 한계점을 찾으면 된다.
@@ -137,7 +152,7 @@ function randomToken() {
 
 export default function () {
   const params = {
-    headers: ${toHeadersLiteral(headers)},
+    headers: ${toHeadersLiteral(headers, sensitiveHeaders)},
     timeout: '${timeoutMs}ms',
     redirects: 0, // 3xx 를 따라가지 않는다. 랩과 판정 기준을 맞추기 위해서다.
   }
