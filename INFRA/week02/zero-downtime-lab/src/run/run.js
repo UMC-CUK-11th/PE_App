@@ -1,0 +1,205 @@
+import { randomUUID } from 'node:crypto'
+import { createBucketer } from '../analysis/bucketer.js'
+import { createOutageDetector } from '../analysis/outage-detector.js'
+import { createBaseline } from '../analysis/baseline.js'
+import { summarizeDurations } from '../analysis/percentiles.js'
+
+const SUMMARY_INTERVAL_MS = 5000
+/** 성공이 한 건도 없는 상태에서 이만큼 network 실패가 이어지면 대상에 닿지 않는 것으로 본다 */
+const UNREACHABLE_STREAK = 10
+
+/**
+ * 프로버가 뱉는 레코드를 집계 단위들에 흘려보내고 이벤트로 알린다.
+ *
+ * @param {{ scenario: object, prober: object }} options
+ */
+export function createRun({ scenario, prober }) {
+  const id = randomUUID()
+  const listeners = { bucket: [], outage: [], summary: [], state: [] }
+
+  const bucketer = createBucketer({ slowThresholdMs: scenario.analysis.slowThresholdMs })
+  const detector = createOutageDetector({ minConsecutiveFailures: scenario.analysis.minConsecutiveFailures })
+  /** 베이스라인은 첫 레코드가 와야 시작 시각을 안다 */
+  let baseline = null
+
+  const buckets = []
+  const durations = []
+  const totals = {
+    sent: 0, success: 0, failure: 0,
+    byType: { network: 0, timeout: 0, server: 0, client: 0 },
+    slow: 0, dropped: 0,
+  }
+
+  let status = 'idle'
+  let startedAt = null
+  let finishedAt = null
+  let sawSuccess = false
+  let networkStreak = 0
+  let summaryTimer = null
+  /** stop() 이 불렸는지. 종료 상태를 finished/stopped 로 가를 때 쓴다. */
+  let stopRequested = false
+
+  function emit(event, payload) {
+    // 사본을 순회한다. 리스너가 자기 자신이나 다른 리스너를 해제하면
+    // 원본 배열이 순회 도중 줄어들어 다음 리스너를 건너뛴다.
+    // SSE 핸들러가 실제로 state 리스너 안에서 구독을 전부 해제하므로
+    // 뷰어가 둘 이상일 때 한쪽이 마지막 요약을 못 받고 연결이 매달린다.
+    for (const cb of [...listeners[event]]) cb(payload)
+  }
+
+  function setStatus(next) {
+    status = next
+    emit('state', { status, runId: id })
+  }
+
+  /**
+   * dropped 를 경고로 올리는 기준.
+   *
+   * 한 건이라도 있으면 경고하던 때가 있었는데, 14,400건 중 4건(0.03%)에도
+   * "수치를 신뢰할 수 없다"가 떠서 멀쩡한 측정을 버리게 만들었다.
+   *
+   * 경계는 같은 노트북에서 두 번 잰 실측으로 잡았다. 쓸 수 있었던 실행과
+   * 무너진 실행 사이가 1.4% 와 4.6% 로 갈린다.
+   *
+   *   200 RPS  0.16%  쓸 수 있음
+   *   400 RPS  0.83%  쓸 수 있음
+   *   600 RPS  1.37%  쓸 수 있음  ← 가장 높은 "정상"
+   *   800 RPS  4.6% / 9.8%  무너짐 ← 가장 낮은 "비정상"
+   *
+   * 2% 면 양쪽을 다 지나간다. 1% 로 두면 600 RPS 가 걸려서
+   * 고치려던 문제가 그대로 돌아온다.
+   */
+  const DROPPED_WARN_RATIO = 0.02
+
+  function warnings() {
+    const out = []
+    const scheduled = totals.sent + totals.dropped
+    if (scheduled > 0 && totals.dropped / scheduled > DROPPED_WARN_RATIO) out.push('dropped')
+    if (status === 'unreachable') out.push('unreachable')
+    const base = baseline?.result()
+    if (base?.complete) {
+      if (base.failureRate !== null && base.failureRate > 0.05) out.push('baseline-unstable')
+      if (base.clientFailureRate !== null && base.clientFailureRate > 0.5) out.push('client-heavy')
+    }
+    return out
+  }
+
+  function summary() {
+    const outages = detector.outages()
+    return {
+      runId: id,
+      status,
+      startedAt,
+      finishedAt,
+      scenarioName: scenario.name,
+      totals: { ...totals, byType: { ...totals.byType } },
+      percentiles: summarizeDurations(durations),
+      baseline: baseline?.result() ?? {
+        complete: false, sampleCount: 0, failureRate: null, clientFailureRate: null, p95: null,
+      },
+      outages,
+      downtimeMs: outages.reduce((sum, o) => sum + o.durationMs, 0),
+      warnings: warnings(),
+    }
+  }
+
+  function onRecord(record) {
+    if (baseline === null) {
+      // 실제로 요청이 나가기 시작한 시점이 베이스라인의 기준이다
+      baseline = createBaseline({ startTs: record.ts, baselineSec: scenario.analysis.baselineSec })
+    }
+
+    totals.sent += 1
+    if (record.outcome === 'success') {
+      totals.success += 1
+      sawSuccess = true
+      networkStreak = 0
+      if (typeof record.durationMs === 'number' && record.durationMs > scenario.analysis.slowThresholdMs) {
+        totals.slow += 1
+      }
+    } else {
+      totals.failure += 1
+      if (record.failureType in totals.byType) totals.byType[record.failureType] += 1
+      networkStreak = record.failureType === 'network' ? networkStreak + 1 : 0
+    }
+    if (typeof record.durationMs === 'number') durations.push(record.durationMs)
+
+    baseline.push(record)
+
+    const bucket = bucketer.push(record)
+    if (bucket !== null) {
+      buckets.push(bucket)
+      emit('bucket', bucket)
+    }
+
+    const outage = detector.push(record)
+    if (outage !== null) emit('outage', outage)
+
+    // 한 번도 성공한 적 없이 network 실패만 이어진다 = 애초에 닿은 적이 없다.
+    // 그대로 durationSec 을 다 돌리는 것은 시간 낭비다.
+    //
+    // 여기서 state 를 emit 하지 않는다. 이 시점엔 아직 마지막 버킷/순단이
+    // 만들어지지 않았다 — 종료 state 는 start() 의 finally 에서 모든 것을
+    // 내보낸 다음 마지막으로 한 번만 나가야 리스너가 그 전에 끊기지 않는다.
+    if (!sawSuccess && networkStreak >= UNREACHABLE_STREAK && status === 'running') {
+      status = 'unreachable'
+      prober.stop()
+    }
+  }
+
+  return {
+    id,
+    scenario,
+    get status() { return status },
+    get startedAt() { return startedAt },
+    get finishedAt() { return finishedAt },
+    buckets: () => buckets,
+    outages: () => detector.outages(),
+    summary,
+
+    on(event, cb) {
+      listeners[event].push(cb)
+      return () => {
+        const i = listeners[event].indexOf(cb)
+        if (i >= 0) listeners[event].splice(i, 1)
+      }
+    },
+
+    async start() {
+      startedAt = Date.now()
+      setStatus('running')
+      summaryTimer = setInterval(() => emit('summary', summary()), SUMMARY_INTERVAL_MS)
+
+      try {
+        const stats = await prober.start(scenario, onRecord)
+        totals.dropped = stats.dropped
+      } finally {
+        clearInterval(summaryTimer)
+        const lastBucket = bucketer.flush()
+        if (lastBucket !== null) {
+          buckets.push(lastBucket)
+          emit('bucket', lastBucket)
+        }
+        const lastOutage = detector.finish()
+        if (lastOutage !== null) emit('outage', lastOutage)
+
+        finishedAt = Date.now()
+        // 종료 state 는 이 실행이 마지막으로 내보내는 이벤트여야 한다.
+        // 그래야 SSE 핸들러가 state 를 받고 구독을 끊기 전에 요약이 이미
+        // 나가 있다. summary 를 먼저, state 를 정말 마지막으로 emit 한다.
+        if (status === 'running') status = stopRequested ? 'stopped' : 'finished'
+        emit('summary', summary())
+        emit('state', { status, runId: id })
+      }
+    },
+
+    stop() {
+      // 여기서 상태를 바꾸거나 state 를 emit 하지 않는다. 실제 종료 상태와
+      // 이벤트는 start() 의 finally 에서, 프로버가 완전히 멎은 뒤에만 나간다.
+      // 예전에는 여기서 즉시 'stopped' 로 표시해 프로버가 아직 드레이닝
+      // 중인데도 새 실행이 동시에 시작될 수 있었다.
+      stopRequested = true
+      prober.stop()
+    },
+  }
+}

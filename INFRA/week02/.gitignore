@@ -1,0 +1,4 @@
+.env
+setup-exporter.sql
+backend.env
+results/*.json

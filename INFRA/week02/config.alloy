@@ -1,0 +1,61 @@
+// UMC 11th Infra 2주차 — Alloy 수집 설정
+//
+// workbook-assets/config.alloy 를 바탕으로 앱(Spring Boot Actuator)과 MySQL 지표를
+// Grafana Cloud Prometheus 로 보냅니다. 접속 정보는 같은 폴더의 .env 에서 읽습니다.
+//
+//   GC_PROM_URL  GC_PROM_USER  GC_TOKEN  MYSQL_DSN
+//   APP_METRICS_ADDR  APP_METRICS_PATH
+//
+// CPU 사용률은 JVM 이 내는 system_cpu_usage(호스트)·process_cpu_usage(앱 프로세스)를 씁니다.
+
+prometheus.remote_write "gc" {
+	endpoint {
+		url = sys.env("GC_PROM_URL")
+
+		basic_auth {
+			username = sys.env("GC_PROM_USER")
+			password = sys.env("GC_TOKEN")
+		}
+	}
+}
+
+// ── MySQL 지표 ────────────────────────────────────────────────
+prometheus.exporter.mysql "db" {
+	data_source_name = sys.env("MYSQL_DSN")
+}
+
+discovery.relabel "db" {
+	targets = prometheus.exporter.mysql.db.targets
+
+	rule {
+		target_label = "instance"
+		replacement  = "umc11th-db"
+	}
+}
+
+prometheus.scrape "db" {
+	targets         = discovery.relabel.db.output
+	forward_to      = [prometheus.remote_write.gc.receiver]
+	job_name        = "mysql"
+	scrape_interval = "15s"
+}
+
+// ── 앱 지표 (Spring Boot Actuator) ────────────────────────────
+discovery.relabel "app" {
+	targets = [
+		{"__address__" = coalesce(sys.env("APP_METRICS_ADDR"), "host.docker.internal:8080")},
+	]
+
+	rule {
+		target_label = "instance"
+		replacement  = "umc11th-app"
+	}
+}
+
+prometheus.scrape "app" {
+	targets         = discovery.relabel.app.output
+	forward_to      = [prometheus.remote_write.gc.receiver]
+	job_name        = "app"
+	metrics_path    = coalesce(sys.env("APP_METRICS_PATH"), "/actuator/prometheus")
+	scrape_interval = "15s"
+}

@@ -1,0 +1,30 @@
+# UMC 11th Infra 2주차 — 수집기(Alloy)와 부하 측정 랩
+#   docker compose up -d        → Alloy(수집기) + 부하 측정 랩
+#   http://localhost:9376        → 부하 측정 랩 화면
+#   http://localhost:12345       → Alloy 상태 화면 (컴포넌트가 초록색이면 정상)
+services:
+  alloy:
+    image: grafana/alloy:v1.20.1
+    container_name: alloy
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy
+    command: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy /etc/alloy/config.alloy
+    ports:
+      - "12345:12345"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  lab:
+    build: ./zero-downtime-lab
+    container_name: zero-downtime-lab
+    restart: unless-stopped
+    ports:
+      - "9376:9376"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  alloy-data:
