@@ -6,6 +6,7 @@ import com.umc11th.movie.dto.UpdateRatingRequest;
 import com.umc11th.movie.entity.Member;
 import com.umc11th.movie.entity.Rating;
 import com.umc11th.movie.exception.AuthException;
+import com.umc11th.movie.exception.ApiException;
 import com.umc11th.movie.repository.MemberRepository;
 import com.umc11th.movie.repository.RatingRepository;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +49,11 @@ public class RatingService {
                 ));
 
         if (ratingRepository.existsByMemberMemberIdAndMovieId(memberId, request.movieId())) {
-            throw new IllegalArgumentException("이미 이 영화에 평점을 남기셨습니다.");
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "RATING409_1",
+                    "이미 이 영화에 평점을 남기셨습니다."
+            );
         }
 
         Rating rating = new Rating(

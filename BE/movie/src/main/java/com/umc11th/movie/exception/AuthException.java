@@ -50,7 +50,7 @@ public class AuthException extends RuntimeException {
     public static AuthException forbiddenRating() {
         return new AuthException(
                 HttpStatus.FORBIDDEN,
-                "AUTH403_1",
+                "RATING403_1",
                 "본인이 작성한 평점만 수정하거나 삭제할 수 있습니다."
         );
     }

@@ -5,6 +5,7 @@ import com.umc11th.movie.dto.UpdateRatingRequest;
 import com.umc11th.movie.entity.Member;
 import com.umc11th.movie.entity.Rating;
 import com.umc11th.movie.exception.AuthException;
+import com.umc11th.movie.exception.ApiException;
 import com.umc11th.movie.repository.MemberRepository;
 import com.umc11th.movie.repository.RatingRepository;
 import org.junit.jupiter.api.Test;
@@ -55,7 +56,7 @@ class RatingServiceTest {
     }
 
     @Test
-    void rejectsDuplicateRating() {
+    void rejectsDuplicateRatingWithRating4091() {
         Member member = mock(Member.class);
         when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
         when(ratingRepository.existsByMemberMemberIdAndMovieId(1L, 550L))
@@ -65,14 +66,20 @@ class RatingServiceTest {
                 1L,
                 new CreateRatingRequest(550L, 5, null)
         ))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("이미 이 영화에 평점을 남기셨습니다.");
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> {
+                    ApiException exception = (ApiException) error;
+                    assertThat(exception.getStatus().value()).isEqualTo(409);
+                    assertThat(exception.getCode()).isEqualTo("RATING409_1");
+                    assertThat(exception.getMessage())
+                            .isEqualTo("이미 이 영화에 평점을 남기셨습니다.");
+                });
 
         verify(ratingRepository, never()).save(any());
     }
 
     @Test
-    void rejectsUpdateByAnotherMember() {
+    void rejectsUpdateByAnotherMemberWithRating4031() {
         Member owner = mock(Member.class);
         when(owner.getMemberId()).thenReturn(2L);
         Rating rating = new Rating(owner, 550L, 5, "원래 후기");
@@ -84,9 +91,11 @@ class RatingServiceTest {
                 new UpdateRatingRequest(4, "수정 시도")
         ))
                 .isInstanceOf(AuthException.class)
-                .satisfies(exception -> assertThat(
-                        ((AuthException) exception).getStatus().value()
-                ).isEqualTo(403));
+                .satisfies(error -> {
+                    AuthException exception = (AuthException) error;
+                    assertThat(exception.getStatus().value()).isEqualTo(403);
+                    assertThat(exception.getCode()).isEqualTo("RATING403_1");
+                });
     }
 
     @Test

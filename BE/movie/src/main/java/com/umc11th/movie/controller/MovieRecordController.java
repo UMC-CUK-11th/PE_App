@@ -27,7 +27,7 @@ public class MovieRecordController {
 
     private final MovieRecordService movieRecordService;
 
-    @PostMapping("/movie-records")
+    @PostMapping({"/movie-records", "/v8/movie-records"})
     @Operation(
             summary = "영화 기록 저장",
             description = "addToFavorites가 true이면 평점과 즐겨찾기를 같은 트랜잭션에서 저장합니다."
@@ -42,14 +42,14 @@ public class MovieRecordController {
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",
-                    description = "평점 또는 즐겨찾기 중복",
+                    description = "RATING409_1 또는 FAVORITE409_1 - 평점/즐겨찾기 중복",
                     content = @Content(examples = @ExampleObject(value = """
                             {"isSuccess":false,"code":"FAVORITE409_1","message":"이미 이 영화를 즐겨찾기하셨습니다.","result":null}
                             """))
             ),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
-                    description = "인증 실패"
+                    description = "AUTH401_2/AUTH401_3/AUTH401_4 - 인증 실패"
             )
     })
     public ResponseEntity<ApiResponse<MovieRecordResponse>> create(

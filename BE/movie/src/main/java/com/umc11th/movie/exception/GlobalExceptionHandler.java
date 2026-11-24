@@ -77,7 +77,7 @@ public class GlobalExceptionHandler {
         if (causeMessage.contains(RATING_CONSTRAINT)) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(ApiResponse.failure(
-                            "COMMON4092",
+                            "RATING409_1",
                             "이미 이 영화에 평점을 남기셨습니다."
                     ));
         }
