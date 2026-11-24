@@ -3,5 +3,5 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 set -a; source "$HERE/backend.env"; set +a
-cd "$HERE/../../BE/movie"
+cd "$HERE/../BE/movie"
 exec ./gradlew bootRun

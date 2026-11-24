@@ -17,18 +17,31 @@ export function openSseStream(res, { lastEventId = 0 } = {}) {
   })
 
   let closed = false
+  let finishing = false
   let waitingForDrain = false
   let queuedBytes = 0
   const queue = []
 
-  function close() {
+  function endResponse() {
     if (closed) return
     closed = true
     clearInterval(heartbeat)
     res.off('drain', flush)
+    if (!res.writableEnded) res.end()
+  }
+
+  function close() {
+    if (closed) return
     queue.length = 0
     queuedBytes = 0
-    if (!res.writableEnded) res.end()
+    endResponse()
+  }
+
+  function finish() {
+    if (closed || finishing) return
+    finishing = true
+    clearInterval(heartbeat)
+    if (!waitingForDrain && queue.length === 0) endResponse()
   }
 
   function enqueue(frame) {
@@ -54,10 +67,11 @@ export function openSseStream(res, { lastEventId = 0 } = {}) {
         return
       }
     }
+    if (finishing) endResponse()
   }
 
   function writeFrame(frame) {
-    if (closed || res.writableEnded) return false
+    if (closed || finishing || res.writableEnded) return false
     if (waitingForDrain || queue.length > 0) return enqueue(frame)
     if (!res.write(frame)) {
       waitingForDrain = true
@@ -76,5 +90,6 @@ export function openSseStream(res, { lastEventId = 0 } = {}) {
       return writeFrame(frame)
     },
     close,
+    finish,
   }
 }

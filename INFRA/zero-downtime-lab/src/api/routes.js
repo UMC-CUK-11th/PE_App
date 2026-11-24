@@ -130,7 +130,7 @@ export function createApp({ store = createRunStore({ max: 10 }), proberFactory =
     function finish() {
       // 구독을 전부 해제한다. 두 번 불려도 안전하다.
       while (off.length > 0) off.pop()()
-      stream.close()
+      stream.finish()
     }
 
     // 이미 끝난 실행이면 따라잡기만 하고 바로 닫는다
@@ -139,7 +139,10 @@ export function createApp({ store = createRunStore({ max: 10 }), proberFactory =
       return
     }
 
-    req.on('close', finish)
+    res.on('close', () => {
+      while (off.length > 0) off.pop()()
+      stream.close()
+    })
   })
 
   return app
